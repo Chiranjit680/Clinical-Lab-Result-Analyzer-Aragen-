@@ -9,10 +9,14 @@ Built around the **Explainable AI** constraint: a user should never see a bare
 range it was compared against, a plain-language clinical explanation, a concrete next
 step, and links to the sources that informed it.
 
+**▶ [Watch the demo](https://youtu.be/91TMwreZPQo)** — uploading a panel, severity
+routing, explanations with sources, and the follow-up chat.
+
 ---
 
 ## Contents
 
+- [Demo](#demo)
 - [Architecture](#architecture)
 - [Setup](#setup)
 - [Running the app](#running-the-app)
@@ -21,6 +25,15 @@ step, and links to the sources that informed it.
 - [API](#api)
 - [Design decisions](#design-decisions)
 - [Known limitations](#known-limitations)
+- [Future work](#future-work)
+
+---
+
+## Demo
+
+[![Clinical Lab Result Analyzer — demo](https://img.youtube.com/vi/91TMwreZPQo/hqdefault.jpg)](https://youtu.be/91TMwreZPQo)
+
+<https://youtu.be/91TMwreZPQo>
 
 ---
 
@@ -405,3 +418,52 @@ value axis would be meaningless. Each test is scaled to its own reference range,
   is given the sources as context rather than instruction, and corrects for this in
   practice, but a test→condition mapping would be a real improvement.
 - **Not a diagnostic device.** Decision support only.
+
+---
+
+## Future work
+
+### Move reference ranges into a database
+
+Ranges currently live in a Python dictionary in `reference_ranges.py`. That is fast and
+dependency-free, but it makes every threshold change a code change. A small **SQLite**
+database (file-based, no server, and openable read-only by the MCP subprocess) would
+address several of the limitations above at once:
+
+```sql
+reference_ranges(test_key, sex, age_min, age_max,
+                 low, high, critical_low, critical_high,
+                 unit, source, updated_at)
+test_aliases(alias, test_key)      -- the Turkish source names live here
+```
+
+- **Editable without a redeploy** — a lab could adjust a threshold through an admin
+  screen rather than a pull request.
+- **Auditable** — `source` and `updated_at` record who changed a critical threshold and
+  when, which matters for a clinical tool in a way a dict cannot express.
+- **Demographic variants** — one test mapping to several rows keyed by sex and age band
+  is a natural relational shape, and directly fixes the "adult, sex-agnostic" limitation.
+- **Institution-specific ranges** — different laboratories legitimately use different
+  bounds.
+
+Note that this is **not** a performance change: dictionary lookup is already
+microseconds, while the measured cost of an analysis is dominated by LLM latency. The
+intended design keeps the hot path in memory — load the table into the existing
+dictionary at MCP server startup, so the database is the authoring and audit surface
+while `get_reference_range()` stays a plain lookup.
+
+### Other candidates
+
+- **Panel-level correlation.** Each result is currently judged in isolation. Real
+  interpretation is cross-test: low haemoglobin *with* low ferritin suggests iron
+  deficiency, while low haemoglobin with normal ferritin points elsewhere. A node
+  between `route` and `explain` could detect such patterns and feed them to the
+  explanation prompt.
+- **Severity magnitude within a bucket.** Everything outside the normal band is
+  "Warning" until it crosses critical, so a value marginally over the limit ranks
+  equally with one far beyond it. A normalised "range-widths outside" score would let
+  the UI sort worst-first inside each bucket.
+- **Direction-aware thresholds.** Low LDL or low triglycerides are not clinically
+  concerning, but the symmetric rule flags them; a per-test
+  `direction: high | low | both` would fix it.
+- **Caching.** Identical searches and explanations are recomputed on every run.

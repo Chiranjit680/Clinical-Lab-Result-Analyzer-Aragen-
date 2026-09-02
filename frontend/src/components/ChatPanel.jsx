@@ -111,9 +111,15 @@ export default function ChatPanel({ threadId }) {
         </header>
 
       <div className="chat__log">
+        {/* Rendered locally rather than sent by the server: it is a greeting,
+            not part of the conversation the agent reasons over. */}
+        <div className="bubble bubble--assistant">
+          Hi, I am Lab Agent — happy to answer your questions.
+        </div>
+
         {messages.length === 0 && (
           <div className="chat__empty">
-            <p>The assistant already has this panel in context — ask a follow-up question.</p>
+            <p>I already have this panel in context — ask me a follow-up question.</p>
             <div className="chat__suggestions">
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" className="chat__chip" onClick={() => send(s)}>
