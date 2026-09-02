@@ -30,6 +30,11 @@ class AnalyzeLabsRequest(BaseModel):
     labs: List[Dict[str, Any]]
 
 
+class Source(BaseModel):
+    title: str = ""
+    url: str = ""
+
+
 class LabResult(BaseModel):
     test_name: str
     value: float
@@ -41,6 +46,9 @@ class LabResult(BaseModel):
     next_steps: str = ""
     source_status: Optional[str] = None
     source_followup: Optional[str] = None
+    urgent: Optional[bool] = None
+    sources: List[Source] = []
+    source_type: Optional[str] = None
 
 
 class ErrorItem(BaseModel):

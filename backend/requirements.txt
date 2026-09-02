@@ -8,3 +8,4 @@ google-genai>=0.3
 openai>=1.30
 langchain_core>=0.1.0
 langgraph>=0.1.0
+ddgs>=9.0

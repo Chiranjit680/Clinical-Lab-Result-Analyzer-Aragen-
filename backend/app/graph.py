@@ -127,24 +127,58 @@ def build_graph(client: MCPToolClient):
         buckets = state["buckets"]
         ordered = [r for key in BUCKET_ORDER for r in buckets[key]]
         for result in ordered:
+            status = result.get("status", "Unknown")
+            base_args = {
+                "test_name": result["test_name"],
+                "value": result["value"],
+                "unit": result.get("unit", ""),
+                "status": status,
+                "reference_range": result.get("reference_range") or "unknown",
+            }
+
+            # Only research abnormal results — Normal results don't need grounding.
+            context = ""
+            result["sources"] = []
+            if status in ("Critical", "Warning"):
+                # Search by direction ("low"/"high") rather than the raw value —
+                # literature search matches concepts, not specific measurements.
+                deviation = result.get("deviation") or ""
+                direction = "low" if "below" in deviation else "high" if "above" in deviation else "abnormal"
+                try:
+                    search = await client.call_tool(
+                        "search_clinical_context",
+                        {"test_name": result["test_name"], "direction": direction, "max_results": 3},
+                    )
+                    if search.get("found"):
+                        hits = search.get("results", [])
+                        context = "\n".join(
+                            f"- {r.get('title', '')}: {r.get('snippet', '')}" for r in hits
+                        )
+                        result["sources"] = [
+                            {"title": r.get("title", ""), "url": r.get("url", "")} for r in hits
+                        ]
+                        result["source_type"] = search.get("source", "")
+                except Exception:
+                    context = ""
+
             try:
-                explanation = await client.call_tool(
-                    "explain_result",
-                    {
-                        "test_name": result["test_name"],
-                        "value": result["value"],
-                        "unit": result.get("unit", ""),
-                        "status": result.get("status", "Unknown"),
-                        "reference_range": result.get("reference_range") or "unknown",
-                    },
-                )
+                explain_resp = await client.call_tool("explain_result", {**base_args, "context": context})
             except Exception as exc:
-                explanation = {
-                    "explanation": f"Unable to generate an explanation right now ({exc}).",
-                    "next_steps": "Review manually.",
-                }
-            result["explanation"] = explanation.get("explanation", "")
-            result["next_steps"] = explanation.get("next_steps", "") or (result.get("source_followup") or "")
+                explain_resp = {"explanation": f"Unable to generate an explanation right now ({exc})."}
+            result["explanation"] = explain_resp.get("explanation", "")
+
+            if status == "Normal":
+                result["next_steps"] = result.get("source_followup") or "No action needed."
+                continue
+
+            try:
+                next_steps_resp = await client.call_tool(
+                    "get_next_steps",
+                    {**base_args, "explanation": result["explanation"], "context": context},
+                )
+            except Exception:
+                next_steps_resp = {"next_steps": "Review with a clinician."}
+            result["next_steps"] = next_steps_resp.get("next_steps", "") or (result.get("source_followup") or "")
         return {"buckets": buckets}
 
     async def aggregate_node(state: GraphState) -> dict:
