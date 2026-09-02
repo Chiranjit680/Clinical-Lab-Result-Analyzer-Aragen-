@@ -114,3 +114,6 @@ class AnalyzeLabsResponse(BaseModel):
     summary: Summary
     results: Dict[str, List[LabResult]]
     errors: List[ErrorItem]
+    # Checkpoint thread the run is parked on; the client passes this to
+    # /ws/chat/{thread_id} to ask follow-up questions about these results.
+    thread_id: Optional[str] = None

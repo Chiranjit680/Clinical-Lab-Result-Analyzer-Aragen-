@@ -1,4 +1,6 @@
 import { useState } from "react";
+import labTech from "./assets/labtech.jpeg";
+import ChatPanel from "./components/ChatPanel";
 import LabInput from "./components/LabInput";
 import LoadingStatus from "./components/LoadingStatus";
 import ResultsDisplay from "./components/ResultsDisplay";
@@ -25,6 +27,13 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Decorative only — fixed to the right edge, behind all content. */}
+      <div
+        className="app__backdrop"
+        style={{ backgroundImage: `url(${labTech})` }}
+        aria-hidden="true"
+      />
+
       <header className="app__header">
         <div className="app__brand">
           <span className="app__mark" aria-hidden="true" />
@@ -47,6 +56,7 @@ export default function App() {
         {loading && <LoadingStatus />}
 
         {!loading && <ResultsDisplay data={data} />}
+        {!loading && data?.thread_id && <ChatPanel threadId={data.thread_id} />}
       </main>
 
       <footer className="app__footer">

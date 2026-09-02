@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.mcp_client import MCPToolClient
-from app.routers import health, labs
+from app.routers import chat, health, labs
 
 # Agent step logging. Set LOG_LEVEL=DEBUG for more detail, WARNING to quieten.
 logging.basicConfig(
@@ -41,6 +41,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(labs.router)
+app.include_router(chat.router)
 
 
 def main() -> None:

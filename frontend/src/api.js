@@ -1,5 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 
+/** WebSocket URL for follow-up chat on a parked analysis thread. */
+export function chatSocketUrl(threadId) {
+  return `${API_BASE.replace(/^http/, "ws")}/ws/chat/${threadId}`;
+}
+
 export async function analyzeLabs(labs) {
   let response;
   try {

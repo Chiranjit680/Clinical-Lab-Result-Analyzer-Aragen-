@@ -312,13 +312,17 @@ def _format_context(context: str) -> str:
 @mcp.tool()
 def explain_result(
     test_name: str,
-    value: float,
+    value: str,
     unit: str,
     status: str,
     reference_range: str,
     context: str = "",
 ) -> dict:
-    """Generate a clinically relevant explanation, optionally grounded in web-search context."""
+    """Generate a clinically relevant explanation, optionally grounded in web-search context.
+
+    `value` is typed str, not float: qualitative results ("Negatif", "1+") flow
+    through here too, and it is only interpolated into the prompt.
+    """
     prompt = (
         f"Lab test: {test_name}\n"
         f"Value: {value} {unit}\n"
@@ -347,14 +351,17 @@ def explain_result(
 @mcp.tool()
 def get_next_steps(
     test_name: str,
-    value: float,
+    value: str,
     unit: str,
     status: str,
     reference_range: str,
     explanation: str = "",
     context: str = "",
 ) -> dict:
-    """Generate a concrete next-step recommendation, optionally grounded in web-search context."""
+    """Generate a concrete next-step recommendation, optionally grounded in web-search context.
+
+    `value` is str for the same reason as explain_result: qualitative results.
+    """
     prompt = (
         f"Lab test: {test_name}\n"
         f"Value: {value} {unit}\n"
@@ -377,6 +384,39 @@ def get_next_steps(
         fallback = "No action needed." if status == "Normal" else "Review with a clinician."
         return {"next_steps": fallback, "source": "fallback"}
     return {"next_steps": raw.strip(), "source": "llm"}
+
+
+@mcp.tool()
+def answer_followup(question: str, results_json: str, history: str = "") -> dict:
+    """Answer a clinician's follow-up question about an analysed lab panel.
+
+    Grounded in the panel that was just analysed: the model is told to answer
+    from those results and to say so plainly when the answer isn't in them,
+    rather than inventing patient detail it was never given.
+    """
+    prompt = (
+        "Analysed lab panel (JSON):\n"
+        f"{results_json}\n\n"
+        + (f"Earlier conversation:\n{history}\n\n" if history else "")
+        + f"Question: {question}\n\n"
+        "Answer using the panel above. Keep it to 2-4 sentences, clinically precise "
+        "and readable. If the panel doesn't contain what's needed to answer, say so "
+        "directly instead of guessing. Never invent values or patient history."
+    )
+    raw = call_llm(
+        prompt,
+        system=(
+            "You are a clinical decision-support assistant discussing lab results with "
+            "a healthcare provider. Be factual and concise. Do not give a definitive "
+            "diagnosis, and do not fabricate data that is not in the provided results."
+        ),
+    )
+    if raw is None:
+        return {
+            "answer": "I can't reach the language model right now — please try again in a moment.",
+            "source": "fallback",
+        }
+    return {"answer": raw.strip(), "source": "llm"}
 
 
 if __name__ == "__main__":

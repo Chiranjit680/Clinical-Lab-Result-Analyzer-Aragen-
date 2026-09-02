@@ -8,11 +8,13 @@ explain_result) — LangGraph just gives the pipeline an explicit graph shape
 with a real conditional branch on severity, instead of a plain function.
 """
 
+import json
 import logging
 import time
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
+from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from app.mcp_client import MCPToolClient
@@ -32,6 +34,8 @@ class GraphState(TypedDict, total=False):
     buckets: Dict[str, List[dict]]
     has_critical: bool
     response: Dict[str, Any]
+    # Follow-up chat, held open after the analysis completes.
+    messages: List[Dict[str, str]]
 
 
 def _log(state: GraphState, message: str, level: int = logging.INFO) -> None:
@@ -156,8 +160,12 @@ async def _classify_one(
     return result
 
 
-def build_graph(client: MCPToolClient):
-    """Compile the StateGraph, closing over the (already-started) MCP client."""
+def build_graph(client: MCPToolClient, checkpointer=None):
+    """Compile the StateGraph, closing over the (already-started) MCP client.
+
+    A checkpointer is required for the follow-up chat: it persists GraphState
+    per thread_id so the run can be paused at the chat node and resumed later.
+    """
 
     async def validate_node(state: GraphState) -> dict:
         started = time.perf_counter()
@@ -282,7 +290,8 @@ def build_graph(client: MCPToolClient):
             _log(state, f"  [{position}/{len(ordered)}] {result['test_name']} ({status})")
             base_args = {
                 "test_name": result["test_name"],
-                "value": result["value"],
+                # str: qualitative results carry values like "Negatif"/"1+".
+                "value": str(result["value"]),
                 "unit": result.get("unit", ""),
                 "status": status,
                 "reference_range": result.get("reference_range") or "unknown",
@@ -359,6 +368,62 @@ def build_graph(client: MCPToolClient):
             }
         }
 
+    async def chat_node(state: GraphState) -> dict:
+        """Human-in-the-loop: pause here and wait for a follow-up question.
+
+        `interrupt()` suspends the run and hands control back to the caller.
+        `/analyze_labs` therefore returns as soon as the analysis is aggregated,
+        with the thread parked here; the WebSocket then resumes the same thread
+        per question via Command(resume=...). Because the whole GraphState is
+        checkpointed, the chat already has every classified result in context.
+        """
+        question = interrupt({"awaiting": "question"})
+
+        history = list(state.get("messages", []))
+        text = str(question or "").strip()
+        if not text:
+            return {"messages": history}
+
+        _log(state, f"NODE chat | Q: {text[:120]}")
+
+        # Send a trimmed view of the results — the full payload (explanations,
+        # abstracts, sources) would be mostly noise and burn context.
+        response = state.get("response", {}) or {}
+        compact = [
+            {
+                "test": r.get("test_name"),
+                "value": r.get("value"),
+                "unit": r.get("unit"),
+                "status": r.get("status"),
+                "reference_range": r.get("reference_range"),
+                "deviation": r.get("deviation"),
+                "explanation": r.get("explanation"),
+                "next_steps": r.get("next_steps"),
+            }
+            for bucket in BUCKET_ORDER
+            for r in (response.get("results", {}) or {}).get(bucket, [])
+        ]
+
+        transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
+        try:
+            reply = await _call_tool_logged(
+                client,
+                state,
+                "answer_followup",
+                {
+                    "question": text,
+                    "results_json": json.dumps(compact, ensure_ascii=False),
+                    "history": transcript,
+                },
+            )
+            answer = reply.get("answer", "")
+        except Exception as exc:
+            _log(state, f"  chat answer failed: {exc}", logging.WARNING)
+            answer = "Sorry — I couldn't answer that just now. Please try again."
+
+        history.extend([{"role": "user", "content": text}, {"role": "assistant", "content": answer}])
+        return {"messages": history}
+
     graph = StateGraph(GraphState)
     graph.add_node("validate", validate_node)
     graph.add_node("translate", translate_node)
@@ -367,6 +432,7 @@ def build_graph(client: MCPToolClient):
     graph.add_node("critical_alert", critical_alert_node)
     graph.add_node("explain", explain_node)
     graph.add_node("aggregate", aggregate_node)
+    graph.add_node("chat", chat_node)
 
     graph.set_entry_point("validate")
     graph.add_edge("validate", "translate")
@@ -375,6 +441,10 @@ def build_graph(client: MCPToolClient):
     graph.add_conditional_edges("route", route_condition, {"critical_alert": "critical_alert", "explain": "explain"})
     graph.add_edge("critical_alert", "explain")
     graph.add_edge("explain", "aggregate")
-    graph.add_edge("aggregate", END)
+    graph.add_edge("aggregate", "chat")
+    # Loop back so the thread parks at the interrupt again, ready for the next
+    # question. Without the self-loop the graph would reach END after one turn
+    # and the thread could not be resumed again.
+    graph.add_conditional_edges("chat", lambda _state: "chat", {"chat": "chat", "end": END})
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

@@ -36,9 +36,44 @@ body {
 }
 
 .app {
+  position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Decorative lab photo pinned to the right edge. Faded and masked so it never
+   competes with the results text for attention or contrast. */
+.app__backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(46vw, 720px);
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center right;
+  opacity: 0.16;
+  /* Fade out toward the content so there is no hard vertical seam. */
+  -webkit-mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 35%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* Keep every real surface above the backdrop. */
+.app__header,
+.app__main,
+.app__footer {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  /* Not enough horizontal room for the image without crowding the content. */
+  .app__backdrop {
+    display: none;
+  }
 }
 
 /* ---------- header ---------- */
@@ -480,6 +515,171 @@ body {
   font-size: 0.82rem;
   color: var(--ink-soft);
   font-style: italic;
+}
+
+/* ---------- follow-up chat ---------- */
+.chat {
+  margin-top: 2rem;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--blue-700);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.chat__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--blue-050);
+}
+
+.chat__head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--blue-900);
+}
+
+.chat__status {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--unknown-bg);
+  color: var(--unknown);
+}
+
+.chat__status--open {
+  background: var(--normal-bg);
+  color: var(--normal);
+}
+
+.chat__status--error,
+.chat__status--closed {
+  background: var(--critical-bg);
+  color: var(--critical);
+}
+
+.chat__log {
+  padding: 1.1rem 1.15rem;
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.chat__empty p {
+  margin: 0 0 0.75rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.chat__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chat__chip {
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--blue-500);
+  background: var(--white);
+  color: var(--blue-700);
+  cursor: pointer;
+}
+
+.chat__chip:hover {
+  background: var(--blue-100);
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  white-space: pre-wrap;
+}
+
+.bubble--user {
+  align-self: flex-end;
+  background: var(--blue-700);
+  color: var(--white);
+  border-bottom-right-radius: 3px;
+}
+
+.bubble--assistant {
+  align-self: flex-start;
+  background: var(--blue-050);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 3px;
+}
+
+.bubble--error {
+  align-self: flex-start;
+  background: var(--critical-bg);
+  border: 1px solid var(--critical);
+  color: var(--critical);
+}
+
+.bubble--pending {
+  display: flex;
+  gap: 0.28rem;
+  align-items: center;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blue-500);
+  animation: blink 1.3s infinite ease-in-out;
+}
+
+.dot:nth-child(2) { animation-delay: 0.18s; }
+.dot:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot { animation: none; opacity: 0.6; }
+}
+
+.chat__form {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--line);
+  background: var(--blue-050);
+}
+
+.chat__form input {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.92rem;
+}
+
+.chat__form input:focus {
+  outline: 2px solid var(--blue-500);
+  outline-offset: -1px;
+}
+
+.chat__form .btn--primary {
+  margin-top: 0;
 }
 
 /* ---------- badges ---------- */
