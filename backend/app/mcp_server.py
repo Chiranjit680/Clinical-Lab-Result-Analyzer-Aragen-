@@ -5,6 +5,7 @@ fallback), explain, and get_next_steps. Run standalone via
 """
 
 import json
+import math
 
 from mcp.server.fastmcp import FastMCP
 
@@ -163,11 +164,84 @@ def classify_qualitative_result(test_name: str, value: str, reference: str = "",
     }
 
 
+# A value this far outside the quoted range is treated as a unit/scale mismatch
+# rather than a clinical extreme. Unit errors are almost always powers of ten
+# (mg/dL vs g/L is ~100x), while genuine outliers are usually well under ~50x
+# the upper bound — ferritin at 2000 against a 15-150 range is only ~13x.
+# 100 sits between the two. A very extreme real value can be rejected by this,
+# and that is the intended trade-off: the result stays visibly "Unknown"
+# instead of being given a confident severity from a range in the wrong units.
+_IMPLAUSIBLE_FACTOR = 100
+
+
+def _validate_looked_up_range(data: dict, value: float | None) -> dict:
+    """Sanity-check an LLM-supplied reference range before it is trusted.
+
+    An unchecked range is the worst failure mode here: a range returned in the
+    wrong units (total T4 4.5-11.2 ug/dL for a free T4 value of 1.14 ng/dL)
+    produces a confident, plausible-looking, completely wrong severity.
+    """
+    warnings: list[str] = []
+
+    try:
+        low = float(data["low"])
+        high = float(data["high"])
+    except (KeyError, TypeError, ValueError):
+        return {"found": False, "reason": "missing or non-numeric low/high"}
+
+    if not (math.isfinite(low) and math.isfinite(high)):
+        return {"found": False, "reason": "non-finite bounds"}
+    if low >= high:
+        return {"found": False, "reason": f"low ({low}) is not below high ({high})"}
+
+    # Critical bounds must sit outside the normal band; clamp rather than reject,
+    # since the band itself is the part that matters most.
+    try:
+        crit_low = float(data.get("critical_low", low))
+    except (TypeError, ValueError):
+        crit_low = low
+    try:
+        crit_high = float(data.get("critical_high", high))
+    except (TypeError, ValueError):
+        crit_high = high
+
+    if crit_low > low:
+        warnings.append(f"critical_low ({crit_low}) was inside the normal band; clamped to {low}")
+        crit_low = low
+    if crit_high < high:
+        warnings.append(f"critical_high ({crit_high}) was inside the normal band; clamped to {high}")
+        crit_high = high
+
+    # Scale check against the observed value.
+    if value is not None and math.isfinite(value) and value != 0:
+        if high > 0 and value > high * _IMPLAUSIBLE_FACTOR:
+            return {"found": False, "reason": f"value {value} is implausibly far above the quoted range {low}-{high} (likely different units)"}
+        if low > 0 and value < low / _IMPLAUSIBLE_FACTOR:
+            return {"found": False, "reason": f"value {value} is implausibly far below the quoted range {low}-{high} (likely different units)"}
+
+    return {
+        "found": True,
+        "low": low,
+        "high": high,
+        "critical_low": crit_low,
+        "critical_high": crit_high,
+        "unit": str(data.get("unit", "") or ""),
+        "warnings": warnings,
+    }
+
+
 @mcp.tool()
-def reference_range_lookup(test_name: str) -> dict:
-    """LLM-assisted fallback lookup for a lab test not in the local dictionary."""
+def reference_range_lookup(test_name: str, value: float | None = None, unit: str = "") -> dict:
+    """LLM-assisted fallback lookup for a lab test not in the local dictionary.
+
+    `value`/`unit` are the observed result: supplying them lets the returned
+    range be scale-checked, so a range quoted in the wrong units is rejected
+    instead of silently producing a wrong severity.
+    """
     prompt = (
-        f"Provide the typical adult clinical reference range for the lab test '{test_name}'. "
+        f"Provide the typical adult clinical reference range for the lab test '{test_name}'"
+        + (f", for a result reported as {value} {unit}." if value is not None else ".")
+        + " Use units consistent with that result. "
         'Respond with ONLY compact JSON in this exact shape: '
         '{"low": <number>, "high": <number>, "critical_low": <number>, '
         '"critical_high": <number>, "unit": "<unit>"}'
@@ -177,14 +251,18 @@ def reference_range_lookup(test_name: str) -> dict:
         system="You are a clinical reference data assistant. Respond with JSON only, no prose.",
     )
     if raw is None:
-        return {"found": False}
+        return {"found": False, "reason": "no response from the language model"}
+
     try:
         start, end = raw.index("{"), raw.rindex("}") + 1
         data = json.loads(raw[start:end])
-        data["found"] = True
-        return data
     except (ValueError, json.JSONDecodeError):
-        return {"found": False}
+        return {"found": False, "reason": "response was not valid JSON"}
+
+    if not isinstance(data, dict):
+        return {"found": False, "reason": "response JSON was not an object"}
+
+    return _validate_looked_up_range(data, value)
 
 
 @mcp.tool()

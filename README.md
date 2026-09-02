@@ -216,22 +216,41 @@ that returns text will work.
 Start the app, upload any CSV from `test_data/`, and you should see colour-coded results,
 explanations, next steps, the range chart, and the chat launcher.
 
-`test_data/` holds ten single-result CSVs, each exercising one path:
+`test_data/` holds three mixed panels of 8 results each, randomly drawn from a pool
+covering every classification path:
 
-| File | Expected | Path exercised |
+| File | Contents | Notable paths exercised |
 |---|---|---|
-| `01_critical_low_hemoglobin.csv` | Critical | Dataset range + curated critical bounds |
-| `02_critical_low_platelet.csv` | Critical | Wide reference range (regression case) |
-| `03_critical_high_potassium.csv` | Critical | Turkish name → alias lookup |
-| `04_warning_high_hba1c.csv` | Warning | Just outside range |
-| `05_warning_low_ferritin.csv` | Warning | Low end |
-| `06_warning_high_tsh.csv` | Warning | No dataset range → curated dict |
-| `07_normal_hemoglobin.csv` | Normal | In-range; skips research |
-| `08_qualitative_normal_protein.csv` | Normal | Qualitative classifier |
-| `09_qualitative_abnormal_blood.csv` | Critical | Qualitative heavy grade (`3+`) |
-| `10_unknown_test_no_range.csv` | resolved via lookup | LLM `reference_range_lookup` fallback |
+| `panel_a_mixed.csv` | 1 critical · 1 warning · 3 normal · 1 unknown · **2 rejected** | Error handling — a row with a blank `Test_Name` and a row whose `Result` is non-numeric despite a numeric reference range. Also the qualitative `3+` grade and the LLM `reference_range_lookup` fallback (Prokalsitonin). |
+| `panel_b_mixed.csv` | 1 critical · 5 warning · 2 normal | Qualitative values (`Negatif`, `Pozitif`), a test with no dataset range falling back to the curated dictionary (TSH), and Turkish test names. |
+| `panel_c_mixed.csv` | 3 critical · 3 warning · 2 normal | The wide-range regression case (`Trombosit` 18 in a 150–450 range → Critical), plus a unit/scale mismatch guard (`Serbest T4` must not borrow total-T4 bounds). |
 
-### 2. Classification only (fast, no LLM calls)
+Rows that fail validation appear in the response's `errors[]` and do not stop the rest
+of the batch from being analysed.
+
+### 2. Unit tests
+
+Cover the deterministic core — severity boundaries, the qualitative grades, Turkish
+alias/diacritic folding, and schema validation. No network or LLM calls, so they run in
+about a second.
+
+```bash
+cd backend
+./venv/Scripts/python.exe -m pytest tests/ -q       # 56 tests
+```
+
+### 3. End-to-end smoke test
+
+Requires the backend running. Posts each CSV and asserts the expected severity plus a
+non-empty explanation and next step for every result.
+
+```bash
+cd backend
+./venv/Scripts/python.exe smoke_test.py            # all three panels
+./venv/Scripts/python.exe smoke_test.py panel_c    # just one
+```
+
+### 4. Classification only (fast, no LLM calls)
 
 ```bash
 cd backend
@@ -249,7 +268,7 @@ for path in sorted(glob.glob('../test_data/*.csv')):
 "
 ```
 
-### 3. API directly
+### 5. API directly
 
 ```bash
 curl -X POST http://127.0.0.1:8000/analyze_labs \
@@ -257,7 +276,7 @@ curl -X POST http://127.0.0.1:8000/analyze_labs \
   -d '{"labs":[{"Test_Name":"Hemoglobin","Result":8.2,"Unit":"g/dL","Min_Reference":12,"Max_Reference":15}]}'
 ```
 
-### 4. Watching the agent run
+### 6. Watching the agent run
 
 Every node and tool call is logged with a per-request id and timing:
 

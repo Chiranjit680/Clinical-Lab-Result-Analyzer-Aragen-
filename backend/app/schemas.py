@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LabRecord(BaseModel):
@@ -63,6 +63,21 @@ class LabRecord(BaseModel):
             return v.strip().replace(",", ".")
         return v
 
+    @model_validator(mode="after")
+    def _reject_contradictory_row(self) -> "LabRecord":
+        """A row with a numeric reference range must have a numeric result.
+
+        Without this, a corrupt value ("ABC") on a test that clearly expects a
+        number is silently treated as a qualitative result and classified
+        Unknown, instead of being surfaced to the user as a bad row.
+        """
+        if isinstance(self.result, str) and self.min_reference is not None and self.max_reference is not None:
+            raise ValueError(
+                f"Result '{self.result}' is not numeric, but this test has a "
+                f"numeric reference range ({self.min_reference}-{self.max_reference})"
+            )
+        return self
+
     @property
     def is_qualitative(self) -> bool:
         return isinstance(self.result, str)
@@ -96,6 +111,9 @@ class LabResult(BaseModel):
     urgent: Optional[bool] = None
     sources: List[Source] = []
     source_type: Optional[str] = None
+    # "llm_lookup" when the reference range came from the model rather than the
+    # dataset row or the curated dictionary.
+    range_source: Optional[str] = None
 
 
 class ErrorItem(BaseModel):

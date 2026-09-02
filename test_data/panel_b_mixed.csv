@@ -1,0 +1,9 @@
+Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
+2025-08-14,Glikozile Hemoglobin (HbA1c),6.4,%,4.0-6.0,Yuksek,Prediyabet araligi,4.0,6.0,Yuzde,Diyet ve egzersiz danismanligi
+2025-08-12,Protein (Strip),Negatif,mg/dL,Negatif,Normal,Protein kacagi yok,,,Miligram/Desilitre,Takip gerekmez
+2025-08-16,Nitrit (Strip),Pozitif,-,Negatif,Yuksek,Bakteriyel enfeksiyon dusundurur,,,-,Idrar kulturu onerilir
+2025-08-12,Lokosit,6.37,10^3/uL,5-10.6,Normal,Bagisiklik hucreleri normal,5,10.6,Bin/uL,Rutin kontrol
+2025-08-17,TSH,9.8,mIU/L,,,Hipotiroidi dusundurur,,,Miliunite/Litre,Tiroid antikorlari istenmeli
+2025-08-15,Hemoglobin,6.4,g/dL,12-15,Kritik Dusuk,Agir anemi,12,15,Gram/Desilitre,Acil hematoloji konsultasyonu
+2025-08-14,Insulin,26.8,mU/L,2.6-24.9,Yuksek,Insulin direnci olasiligi,2.6,24.9,Miliunite/Litre,Endokrinoloji degerlendirmesi
+2025-08-14,Hemoglobin,11.2,g/dL,12-15,Dusuk,Hafif anemi,12,15,Gram/Desilitre,Demir paneli onerilir

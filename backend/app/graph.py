@@ -117,25 +117,21 @@ async def _classify_one(
         _log(state, f"  '{lab.test_name}' unknown -> falling back to reference_range_lookup")
         try:
             lookup = await _call_tool_logged(
-                client, state, "reference_range_lookup", {"test_name": lab.test_name}
+                client,
+                state,
+                "reference_range_lookup",
+                # Passing the observed value lets the tool scale-check the range
+                # it gets back, rather than trusting it blind.
+                {"test_name": lab.test_name, "value": lab.result, "unit": lab.unit or ""},
             )
         except Exception:
-            lookup = {"found": False}
+            lookup = {"found": False, "reason": "tool call failed"}
 
-        parsed = None
         if lookup.get("found"):
-            try:
-                low = float(lookup["low"])
-                high = float(lookup["high"])
-                crit_low = float(lookup.get("critical_low", low))
-                crit_high = float(lookup.get("critical_high", high))
-                parsed = (low, high, crit_low, crit_high)
-            except (KeyError, TypeError, ValueError):
-                parsed = None
-
-        if parsed is not None:
-            low, high, crit_low, crit_high = parsed
-            ref_unit = lookup.get("unit", lab.unit or "")
+            # The tool has already validated and normalised these.
+            low, high = lookup["low"], lookup["high"]
+            crit_low, crit_high = lookup["critical_low"], lookup["critical_high"]
+            ref_unit = lookup.get("unit") or lab.unit or ""
             if lab.result < crit_low or lab.result > crit_high:
                 status = "Critical"
             elif lab.result < low or lab.result > high:
@@ -149,10 +145,19 @@ async def _classify_one(
                 "status": status,
                 "reference_range": f"{low}-{high} {ref_unit}",
                 "deviation": None,
+                # Flagged so the UI can show this range came from the model,
+                # not from the dataset or the curated dictionary.
+                "range_source": "llm_lookup",
             }
+            for warning in lookup.get("warnings", []):
+                _log(state, f"  lookup warning: {warning}", logging.WARNING)
             _log(state, f"  lookup resolved range {low}-{high} {ref_unit}")
         else:
-            _log(state, "  lookup returned nothing usable; staying Unknown", logging.WARNING)
+            _log(
+                state,
+                f"  lookup rejected ({lookup.get('reason', 'unusable')}); staying Unknown",
+                logging.WARNING,
+            )
 
     _log(state, f"  -> {result.get('status')}")
 
@@ -176,9 +181,16 @@ def build_graph(client: MCPToolClient, checkpointer=None):
                 validated.append(LabRecord.model_validate(raw))
             except ValidationError as exc:
                 name = raw.get("Test_Name") or raw.get("test_name")
-                missing = ", ".join(sorted({str(e["loc"][-1]) for e in exc.errors()}))
-                errors.append({"test_name": name, "error": f"Invalid/missing field(s): {missing}"})
-                _log(state, f"  rejected '{name or '(unnamed)'}': {missing}", logging.WARNING)
+                fields = sorted({str(e["loc"][-1]) for e in exc.errors() if e["loc"]})
+                if fields:
+                    reason = f"Invalid/missing field(s): {', '.join(fields)}"
+                else:
+                    # Model-level validator (empty loc) — its message is the useful part.
+                    reason = "; ".join(
+                        str(e.get("msg", "")).replace("Value error, ", "") for e in exc.errors()
+                    )
+                errors.append({"test_name": name, "error": reason})
+                _log(state, f"  rejected '{name or '(unnamed)'}': {reason}", logging.WARNING)
         _log(
             state,
             f"NODE validate done | {len(validated)} valid, {len(errors)} rejected "
