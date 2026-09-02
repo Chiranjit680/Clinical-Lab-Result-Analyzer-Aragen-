@@ -49,10 +49,19 @@ async def _classify(client: MCPToolClient, lab: LabRecord, errors: List[dict]) -
         except Exception:
             lookup = {"found": False}
 
+        parsed = None
         if lookup.get("found"):
-            low, high = lookup["low"], lookup["high"]
-            crit_low = lookup.get("critical_low", low)
-            crit_high = lookup.get("critical_high", high)
+            try:
+                low = float(lookup["low"])
+                high = float(lookup["high"])
+                crit_low = float(lookup.get("critical_low", low))
+                crit_high = float(lookup.get("critical_high", high))
+                parsed = (low, high, crit_low, crit_high)
+            except (KeyError, TypeError, ValueError):
+                parsed = None
+
+        if parsed is not None:
+            low, high, crit_low, crit_high = parsed
             ref_unit = lookup.get("unit", lab.unit or "")
             if lab.result < crit_low or lab.result > crit_high:
                 status = "Critical"

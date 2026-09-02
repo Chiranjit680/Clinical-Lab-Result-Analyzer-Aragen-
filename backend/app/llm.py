@@ -57,19 +57,50 @@ def _call_openrouter(prompt: str, system: Optional[str]) -> str:
     return resp.choices[0].message.content
 
 
+def _call_inference(prompt: str, system: Optional[str]) -> str:
+    """Generic OpenAI-compatible endpoint (INFERENCE_BASE_URL/API_KEY/MODEL).
+
+    Some models behind this endpoint are "thinking" models that spend part of
+    the token budget on hidden reasoning before the final answer, so a
+    generous max_tokens is needed or `content` comes back empty.
+    """
+    from openai import OpenAI
+
+    client = OpenAI(base_url=os.environ["INFERENCE_BASE_URL"], api_key=os.environ["INFERENCE_API_KEY"])
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    resp = client.chat.completions.create(
+        model=os.environ.get("INFERENCE_MODEL") or "qwen/qwen-3.5-397b-a17b",
+        messages=messages,
+        temperature=0.2,
+        max_tokens=1000,
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
 _PROVIDERS = {
     "groq": _call_groq,
     "gemini": _call_gemini,
     "openrouter": _call_openrouter,
+    "inference": _call_inference,
 }
 
 
 def call_llm(prompt: str, system: Optional[str] = None) -> Optional[str]:
-    provider = os.environ.get("LLM_PROVIDER", "groq").lower()
-    fn = _PROVIDERS.get(provider)
-    if fn is None:
-        return None
-    try:
-        return fn(prompt, system)
-    except Exception:
-        return None
+    """Try LLM_PROVIDER first, then LLM_FALLBACK_PROVIDER if the primary fails."""
+    primary = os.environ.get("LLM_PROVIDER", "groq").lower()
+    fallback = os.environ.get("LLM_FALLBACK_PROVIDER", "").strip().lower()
+
+    for provider in dict.fromkeys([primary, fallback]):  # dedupe, keep order
+        fn = _PROVIDERS.get(provider)
+        if fn is None:
+            continue
+        try:
+            result = fn(prompt, system)
+            if result:
+                return result
+        except Exception:
+            continue
+    return None

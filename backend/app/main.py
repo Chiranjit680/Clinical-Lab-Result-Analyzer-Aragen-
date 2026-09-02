@@ -28,3 +28,13 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(labs.router)
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -11,9 +11,9 @@ class LabRecord(BaseModel):
     row against this model individually and routes failures into `errors[]`.
     """
 
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore", str_strip_whitespace=True)
 
-    test_name: str = Field(alias="Test_Name")
+    test_name: str = Field(alias="Test_Name", min_length=1)
     result: float = Field(alias="Result")
     unit: Optional[str] = Field(default=None, alias="Unit")
     reference: Optional[str] = Field(default=None, alias="Reference")
