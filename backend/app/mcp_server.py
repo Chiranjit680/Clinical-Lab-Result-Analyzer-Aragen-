@@ -4,9 +4,11 @@ fallback), explain, and get_next_steps. Run standalone via
 `python -m app.mcp_server`, or spawned as a subprocess by mcp_client.py.
 """
 
+import functools
 import json
 import math
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 
 from app.llm import call_llm
@@ -14,6 +16,29 @@ from app.reference_ranges import canonical_key, get_reference_range
 from app.units import check_compatibility
 
 mcp = FastMCP("results-analyzer")
+
+
+def blocking_tool(fn):
+    """Register a blocking function as an MCP tool that runs off the event loop.
+
+    Most tools here do network I/O (LLM calls, PubMed HTTP). Registered as plain
+    sync functions they run *on* the server's event loop, so the server handles
+    exactly one tool call at a time and concurrent requests from the agent simply
+    queue — an 8-result panel then costs the sum of its parts.
+
+    The wrapper hands the body to a worker thread so the event loop stays free.
+    `functools.wraps` preserves the signature, which is what FastMCP builds the
+    tool schema from. The original sync function is returned and bound to the
+    module name, so internal callers (e.g. search_clinical_context calling
+    pubmed_search) keep calling it directly without a thread hop.
+    """
+
+    @mcp.tool(name=fn.__name__, description=(fn.__doc__ or "").strip())
+    @functools.wraps(fn)
+    async def _async_tool(**kwargs):
+        return await anyio.to_thread.run_sync(functools.partial(fn, **kwargs))
+
+    return fn
 
 
 @mcp.tool()
@@ -119,7 +144,7 @@ def check_unit_compatibility(test_name: str, unit: str, has_row_range: bool = Fa
     return {"status": status, "factor": factor, "note": note, "expected_unit": expected}
 
 
-@mcp.tool()
+@blocking_tool
 def translate_to_english(texts: list[str]) -> dict:
     """Batch-translate short clinical field values (test names, statuses,
     comments, follow-ups) to English.
@@ -266,7 +291,7 @@ def _validate_looked_up_range(data: dict, value: float | None) -> dict:
     }
 
 
-@mcp.tool()
+@blocking_tool
 def reference_range_lookup(test_name: str, value: float | None = None, unit: str = "") -> dict:
     """LLM-assisted fallback lookup for a lab test not in the local dictionary.
 
@@ -301,7 +326,7 @@ def reference_range_lookup(test_name: str, value: float | None = None, unit: str
     return _validate_looked_up_range(data, value)
 
 
-@mcp.tool()
+@blocking_tool
 def web_search(query: str, max_results: int = 3) -> dict:
     """Search the web for clinical context about a lab finding/condition.
 
@@ -325,7 +350,7 @@ def web_search(query: str, max_results: int = 3) -> dict:
         return {"found": False, "results": [], "error": str(exc)}
 
 
-@mcp.tool()
+@blocking_tool
 def pubmed_search(query: str, max_results: int = 3) -> dict:
     """Search PubMed (NCBI E-utilities) for peer-reviewed clinical literature.
 
@@ -388,7 +413,7 @@ _DIRECTION_TERMS = {
 }
 
 
-@mcp.tool()
+@blocking_tool
 def search_clinical_context(test_name: str, direction: str = "abnormal", max_results: int = 3) -> dict:
     """Find clinical grounding for an abnormal lab finding.
 
@@ -423,7 +448,7 @@ def _format_context(context: str) -> str:
     return f"\nRelevant background from published sources:\n{context}\n" if context else ""
 
 
-@mcp.tool()
+@blocking_tool
 def explain_result(
     test_name: str,
     value: str,
@@ -462,7 +487,7 @@ def explain_result(
     return {"explanation": raw.strip(), "source": "llm"}
 
 
-@mcp.tool()
+@blocking_tool
 def get_next_steps(
     test_name: str,
     value: str,
@@ -500,7 +525,7 @@ def get_next_steps(
     return {"next_steps": raw.strip(), "source": "llm"}
 
 
-@mcp.tool()
+@blocking_tool
 def answer_followup(question: str, results_json: str, history: str = "") -> dict:
     """Answer a clinician's follow-up question about an analysed lab panel.
 

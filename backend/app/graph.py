@@ -8,8 +8,10 @@ explain_result) — LangGraph just gives the pipeline an explicit graph shape
 with a real conditional branch on severity, instead of a plain function.
 """
 
+import asyncio
 import json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional, TypedDict
 
@@ -358,79 +360,105 @@ def build_graph(client: MCPToolClient, checkpointer=None):
             result["urgent"] = True
         return {"buckets": state["buckets"]}
 
+    async def _explain_one(state: GraphState, result: dict, position: int, total: int) -> None:
+        """Research + explain + next-steps for one result, mutated in place.
+
+        Each result is independent of the others, which is what lets the node
+        run them concurrently.
+        """
+        status = result.get("status", "Unknown")
+        _log(state, f"  [{position}/{total}] {result['test_name']} ({status}) starting")
+        base_args = {
+            "test_name": result["test_name"],
+            # str: qualitative results carry values like "Negatif"/"1+".
+            "value": str(result["value"]),
+            "unit": result.get("unit", ""),
+            "status": status,
+            "reference_range": result.get("reference_range") or "unknown",
+        }
+
+        # Only research abnormal results — Normal results don't need grounding.
+        context = ""
+        result["sources"] = []
+        if status in ("Critical", "Warning"):
+            # Search by direction ("low"/"high") rather than the raw value —
+            # literature search matches concepts, not specific measurements.
+            deviation = result.get("deviation") or ""
+            direction = "low" if "below" in deviation else "high" if "above" in deviation else "abnormal"
+            try:
+                search = await _call_tool_logged(
+                    client,
+                    state,
+                    "search_clinical_context",
+                    {"test_name": result["test_name"], "direction": direction, "max_results": 3},
+                    label=f"({result['test_name']} {direction})",
+                )
+                if search.get("found"):
+                    hits = search.get("results", [])
+                    context = "\n".join(f"- {r.get('title', '')}: {r.get('snippet', '')}" for r in hits)
+                    result["sources"] = [
+                        {"title": r.get("title", ""), "url": r.get("url", "")} for r in hits
+                    ]
+                    result["source_type"] = search.get("source", "")
+                    _log(state, f"    [{position}] grounded via {search.get('source')}: {len(hits)} source(s)")
+                else:
+                    _log(state, f"    [{position}] no sources found; explaining ungrounded", logging.WARNING)
+            except Exception:
+                context = ""
+
+        try:
+            explain_resp = await _call_tool_logged(
+                client, state, "explain_result", {**base_args, "context": context}
+            )
+        except Exception as exc:
+            explain_resp = {"explanation": f"Unable to generate an explanation right now ({exc})."}
+        result["explanation"] = explain_resp.get("explanation", "")
+
+        if status == "Normal":
+            result["next_steps"] = result.get("source_followup") or "No action needed."
+            return
+
+        try:
+            next_steps_resp = await _call_tool_logged(
+                client,
+                state,
+                "get_next_steps",
+                {**base_args, "explanation": result["explanation"], "context": context},
+            )
+        except Exception:
+            next_steps_resp = {"next_steps": "Review with a clinician."}
+        result["next_steps"] = next_steps_resp.get("next_steps", "") or (result.get("source_followup") or "")
+
     async def explain_node(state: GraphState) -> dict:
+        """Explain every result concurrently.
+
+        Results are independent, so running them sequentially made a panel cost
+        the *sum* of its results (an 8-row panel took ~226s). Concurrency is
+        bounded rather than unlimited: the LLM providers rate-limit, and NCBI
+        asks for no more than a few requests per second without an API key.
+        """
         started = time.perf_counter()
         buckets = state["buckets"]
         ordered = [r for key in BUCKET_ORDER for r in buckets[key]]
-        _log(state, f"NODE explain | {len(ordered)} result(s), critical-first order")
-        for position, result in enumerate(ordered, 1):
-            status = result.get("status", "Unknown")
-            _log(state, f"  [{position}/{len(ordered)}] {result['test_name']} ({status})")
-            base_args = {
-                "test_name": result["test_name"],
-                # str: qualitative results carry values like "Negatif"/"1+".
-                "value": str(result["value"]),
-                "unit": result.get("unit", ""),
-                "status": status,
-                "reference_range": result.get("reference_range") or "unknown",
-            }
+        if not ordered:
+            return {"buckets": buckets}
 
-            # Only research abnormal results — Normal results don't need grounding.
-            context = ""
-            result["sources"] = []
-            if status in ("Critical", "Warning"):
-                # Search by direction ("low"/"high") rather than the raw value —
-                # literature search matches concepts, not specific measurements.
-                deviation = result.get("deviation") or ""
-                direction = "low" if "below" in deviation else "high" if "above" in deviation else "abnormal"
+        limit = max(1, int(os.environ.get("EXPLAIN_CONCURRENCY", "4")))
+        semaphore = asyncio.Semaphore(limit)
+        _log(state, f"NODE explain | {len(ordered)} result(s), up to {limit} at a time")
+
+        async def worker(position: int, result: dict) -> None:
+            async with semaphore:
                 try:
-                    search = await _call_tool_logged(
-                        client,
-                        state,
-                        "search_clinical_context",
-                        {"test_name": result["test_name"], "direction": direction, "max_results": 3},
-                        label=f"({result['test_name']} {direction})",
-                    )
-                    if search.get("found"):
-                        hits = search.get("results", [])
-                        context = "\n".join(
-                            f"- {r.get('title', '')}: {r.get('snippet', '')}" for r in hits
-                        )
-                        result["sources"] = [
-                            {"title": r.get("title", ""), "url": r.get("url", "")} for r in hits
-                        ]
-                        result["source_type"] = search.get("source", "")
-                        _log(state, f"    grounded via {search.get('source')}: {len(hits)} source(s)")
-                    else:
-                        _log(state, "    no sources found; explaining without grounding", logging.WARNING)
-                except Exception:
-                    context = ""
-            else:
-                _log(state, "    skipping research (not abnormal)")
+                    await _explain_one(state, result, position, len(ordered))
+                except Exception as exc:
+                    # One result failing must not abandon the rest.
+                    _log(state, f"    [{position}] explain failed: {exc}", logging.WARNING)
+                    result.setdefault("explanation", "")
+                    result.setdefault("next_steps", "")
 
-            try:
-                explain_resp = await _call_tool_logged(
-                    client, state, "explain_result", {**base_args, "context": context}
-                )
-            except Exception as exc:
-                explain_resp = {"explanation": f"Unable to generate an explanation right now ({exc})."}
-            result["explanation"] = explain_resp.get("explanation", "")
+        await asyncio.gather(*(worker(i, r) for i, r in enumerate(ordered, 1)))
 
-            if status == "Normal":
-                result["next_steps"] = result.get("source_followup") or "No action needed."
-                _log(state, "    next steps taken from source record (normal result)")
-                continue
-
-            try:
-                next_steps_resp = await _call_tool_logged(
-                    client,
-                    state,
-                    "get_next_steps",
-                    {**base_args, "explanation": result["explanation"], "context": context},
-                )
-            except Exception:
-                next_steps_resp = {"next_steps": "Review with a clinician."}
-            result["next_steps"] = next_steps_resp.get("next_steps", "") or (result.get("source_followup") or "")
         _log(state, f"NODE explain done ({(time.perf_counter() - started) * 1000:.0f}ms)")
         return {"buckets": buckets}
 
