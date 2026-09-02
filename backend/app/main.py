@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.mcp_client import MCPToolClient
+from app.middleware import RunLogMiddleware
 from app.routers import chat, health, labs
 
 # Agent step logging. Set LOG_LEVEL=DEBUG for more detail, WARNING to quieten.
@@ -30,6 +31,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Results Analyzer", lifespan=lifespan)
+
+# Added first so it sits inside CORS — middleware runs in reverse order of
+# registration, so the run log measures handler time rather than CORS overhead.
+app.add_middleware(RunLogMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
