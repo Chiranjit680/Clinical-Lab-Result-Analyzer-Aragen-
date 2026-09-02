@@ -130,10 +130,19 @@ def _normalize(name: str) -> str:
     return " ".join(text.lower().split())
 
 
-def get_reference_range(test_name: str) -> Optional[Range]:
+def canonical_key(test_name: str) -> str:
+    """Normalised, alias-resolved dictionary key for a test name.
+
+    'Potasyum' -> 'potassium', 'Lökosit' -> 'wbc'. Callers that need to reason
+    about the *test* (not just look up its range) should use this — normalising
+    alone leaves the Turkish name in place.
+    """
     key = _normalize(test_name)
-    key = ALIASES.get(key, key)
-    return REFERENCE_RANGES.get(key)
+    return ALIASES.get(key, key)
+
+
+def get_reference_range(test_name: str) -> Optional[Range]:
+    return REFERENCE_RANGES.get(canonical_key(test_name))
 
 
 def load_from_kaggle_csv(csv_path: str) -> int:

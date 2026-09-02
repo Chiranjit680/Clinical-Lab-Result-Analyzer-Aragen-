@@ -10,7 +10,8 @@ import math
 from mcp.server.fastmcp import FastMCP
 
 from app.llm import call_llm
-from app.reference_ranges import get_reference_range
+from app.reference_ranges import canonical_key, get_reference_range
+from app.units import check_compatibility
 
 mcp = FastMCP("results-analyzer")
 
@@ -81,6 +82,41 @@ def classify_lab_result(
         "reference_range": f"{low}-{high} {ref_unit}",
         "deviation": deviation,
     }
+
+
+@mcp.tool()
+def check_unit_compatibility(test_name: str, unit: str, has_row_range: bool = False) -> dict:
+    """Check a reported unit against the curated reference range's unit.
+
+    Only meaningful when the result will be compared against the curated
+    dictionary: a row carrying its own Min/Max_Reference is self-consistent by
+    construction, so there is nothing to check.
+
+    Returns the status, a multiplier to bring the value into the reference unit
+    when one is needed, and a human-readable note.
+    """
+    if has_row_range:
+        return {
+            "status": "skipped",
+            "factor": 1.0,
+            "note": "row supplies its own reference range; units are self-consistent",
+            "expected_unit": None,
+        }
+
+    ref = get_reference_range(test_name)
+    if ref is None:
+        return {
+            "status": "unknown",
+            "factor": 1.0,
+            "note": "no curated reference range for this test",
+            "expected_unit": None,
+        }
+
+    expected = ref.get("unit", "")
+    # canonical_key, not _normalize: the monovalent-ion check needs the English
+    # dictionary key ('potassium'), not the folded source name ('potasyum').
+    status, factor, note = check_compatibility(canonical_key(test_name), unit, expected)
+    return {"status": status, "factor": factor, "note": note, "expected_unit": expected}
 
 
 @mcp.tool()

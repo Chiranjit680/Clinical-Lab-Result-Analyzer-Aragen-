@@ -253,6 +253,72 @@ def build_graph(client: MCPToolClient, checkpointer=None):
         _log(state, f"NODE translate done ({(time.perf_counter() - started) * 1000:.0f}ms)")
         return {"validated": translated}
 
+    async def check_units_node(state: GraphState) -> dict:
+        """Reconcile each result's unit with the reference range it will be
+        compared against — before any comparison happens.
+
+        Only matters for rows without their own Min/Max_Reference, which fall
+        back to the curated dictionary; a row carrying its own range is
+        self-consistent. Convertible units are converted; genuinely
+        incompatible ones are dropped from classification into `errors[]`,
+        since a silent comparison across scales yields a confident wrong
+        severity.
+        """
+        started = time.perf_counter()
+        labs = state["validated"]
+        errors = list(state.get("errors", []))
+        if not labs:
+            return {"validated": labs, "errors": errors}
+
+        _log(state, f"NODE check_units | {len(labs)} record(s)")
+        kept: List[LabRecord] = []
+        converted = 0
+
+        for lab in labs:
+            has_row_range = lab.min_reference is not None and lab.max_reference is not None
+            if lab.is_qualitative or has_row_range:
+                kept.append(lab)
+                continue
+
+            try:
+                check = await _call_tool_logged(
+                    client,
+                    state,
+                    "check_unit_compatibility",
+                    {"test_name": lab.test_name, "unit": lab.unit or "", "has_row_range": False},
+                    label=f"({lab.test_name})",
+                )
+            except Exception:
+                kept.append(lab)  # never block classification on this check
+                continue
+
+            status = check.get("status")
+            if status == "mismatch":
+                errors.append({"test_name": lab.test_name, "error": f"Unit mismatch — {check.get('note')}"})
+                _log(state, f"  {lab.test_name}: MISMATCH — {check.get('note')}", logging.WARNING)
+                continue
+
+            if status == "convertible":
+                factor = check.get("factor") or 1.0
+                new_value = lab.result * factor
+                _log(
+                    state,
+                    f"  {lab.test_name}: {lab.result} {lab.unit} -> "
+                    f"{new_value:g} {check.get('expected_unit')} ({check.get('note')})",
+                )
+                kept.append(lab.model_copy(update={"result": new_value, "unit": check.get("expected_unit")}))
+                converted += 1
+                continue
+
+            kept.append(lab)
+
+        _log(
+            state,
+            f"NODE check_units done | {converted} converted, "
+            f"{len(labs) - len(kept)} rejected ({(time.perf_counter() - started) * 1000:.0f}ms)",
+        )
+        return {"validated": kept, "errors": errors}
+
     async def classify_node(state: GraphState) -> dict:
         started = time.perf_counter()
         _log(state, f"NODE classify | {len(state['validated'])} record(s)")
@@ -439,6 +505,7 @@ def build_graph(client: MCPToolClient, checkpointer=None):
     graph = StateGraph(GraphState)
     graph.add_node("validate", validate_node)
     graph.add_node("translate", translate_node)
+    graph.add_node("check_units", check_units_node)
     graph.add_node("classify", classify_node)
     graph.add_node("route", route_node)
     graph.add_node("critical_alert", critical_alert_node)
@@ -448,7 +515,8 @@ def build_graph(client: MCPToolClient, checkpointer=None):
 
     graph.set_entry_point("validate")
     graph.add_edge("validate", "translate")
-    graph.add_edge("translate", "classify")
+    graph.add_edge("translate", "check_units")
+    graph.add_edge("check_units", "classify")
     graph.add_edge("classify", "route")
     graph.add_conditional_edges("route", route_condition, {"critical_alert": "critical_alert", "explain": "explain"})
     graph.add_edge("critical_alert", "explain")

@@ -90,6 +90,14 @@ Severity is decided by comparing the value to a reference range, resolved in thi
    *critical* thresholds, which the dataset does not carry.
 3. **`reference_range_lookup`** — an LLM-assisted lookup for tests in neither of the above.
 
+A model-supplied range is **never trusted blind**. It is rejected if the bounds are
+missing, non-numeric, non-finite, or if `low >= high`; critical bounds that fall
+*inside* the normal band are clamped (otherwise a value in the middle of the normal
+range could classify as Critical); and the range is scale-checked against the observed
+value, so a range quoted in the wrong units is rejected rather than producing a
+confident but wrong severity. A rejected lookup leaves the result visibly `Unknown`.
+Results classified this way carry `"range_source": "llm_lookup"`.
+
 ```
 value outside critical bounds  → Critical
 value outside normal band      → Warning
@@ -236,7 +244,7 @@ about a second.
 
 ```bash
 cd backend
-./venv/Scripts/python.exe -m pytest tests/ -q       # 56 tests
+./venv/Scripts/python.exe -m pytest tests/ -q       # 73 tests
 ```
 
 ### 3. End-to-end smoke test
