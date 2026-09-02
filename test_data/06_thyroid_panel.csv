@@ -1,0 +1,5 @@
+Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
+2025-08-17,Serbest T4,0.61,ng/dL,0.87-1.70,Dusuk,Tiroid hormonu dusuk,0.87,1.70,Nanogram/Desilitre,Endokrinoloji konsultasyonu
+2025-08-17,TSH,9.8,mIU/L,0.4-4.0,Yuksek,Hipotiroidi dusundurur,0.4,4.0,Miliunite/Litre,Tiroid antikorlari istenmeli
+2025-08-17,Serbest T3,2.1,pg/mL,2.3-4.2,Dusuk,T3 dusuk,2.3,4.2,Pikogram/Mililitre,Endokrinoloji konsultasyonu
+2025-08-17,Hemoglobin,12.9,g/dL,12-15,Normal,Anemi yok,12,15,Gram/Desilitre,Rutin kontrol

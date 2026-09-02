@@ -1,0 +1,9 @@
+Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
+2025-08-12,Urobilinojen (Strip),Normal,mg/dL,Normal,Normal,Karaciger fonksiyonu normal,,,Miligram/Desilitre,Takip gerekmez
+2025-08-12,Protein (Strip),Negatif,mg/dL,Negatif,Normal,Protein kacagi yok,,,Miligram/Desilitre,Takip gerekmez
+2025-08-12,Nitrit (Strip),Negatif,-,Negatif,Normal,Idrarda nitrit yok,,,-,Takip gerekmez
+2025-08-12,Lokosit (Strip),Negatif,Leu/uL,Negatif,Normal,Lokosit yok,,,Lokosit/uL,Takip gerekmez
+2025-08-12,Keton (Strip),Negatif,mg/dL,Negatif,Normal,Ketoz yok,,,Miligram/Desilitre,Takip gerekmez
+2025-08-12,Glukoz (Strip),Negatif,mg/dL,Negatif,Normal,Seker yok,,,Miligram/Desilitre,Takip gerekmez
+2025-08-12,Eritrosit (Strip),1+,-,Negatif,Yuksek,"Idrarda eritrosit var, kontrol onerilir",,,-,Tekrar idrar tahlili onerilir
+2025-08-12,Bilirubin (Strip),Negatif,mg/dL,Negatif,Normal,Safra pigmenti yok,,,Miligram/Desilitre,Takip gerekmez

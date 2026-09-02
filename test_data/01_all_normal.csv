@@ -1,0 +1,9 @@
+Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
+2025-08-12,Hemoglobin,12.9,g/dL,12-15,Normal,Anemi yok,12,15,Gram/Desilitre,Rutin kontrol
+2025-08-12,Trombosit,267,10^3/uL,150-450,Normal,Pihtilasma hucreleri normal,150,450,Bin/uL,Rutin kontrol
+2025-08-12,Lokosit,6.37,10^3/uL,5-10.6,Normal,Bagisiklik hucreleri normal,5,10.6,Bin/uL,Rutin kontrol
+2025-08-12,Eritrosit,4.55,10^6/uL,3.8-5.2,Normal,Kirmizi kan hucreleri normal,3.8,5.2,Milyon/uL,Rutin kontrol
+2025-08-12,Hematokrit,40,%,35-49,Normal,Hematokrit degeri normal,35,49,Yuzde,Rutin kontrol
+2025-08-12,Ferritin,28.9,ug/L,15-150,Normal,Demir depolari alt-orta seviyede,15,150,Mikrogram/Litre,Demir acisindan zengin beslenme
+2025-08-12,Glikozile Hemoglobin (HbA1c),5.0,%,4.0-6.0,Normal,Kan sekeri uzun donem ortalamasi iyi,4.0,6.0,Yuzde,Mevcut duzeni koruma
+2025-08-12,Serbest T4,1.14,ng/dL,0.87-1.70,Normal,Tiroid fonksiyonu normal,0.87,1.70,Nanogram/Desilitre,Rutin kontrol

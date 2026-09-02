@@ -28,13 +28,24 @@ def classify_lab_result(
     take priority over the local reference-range dictionary. Critical bounds
     aren't in the dataset, so they're derived as 50% beyond the normal band.
     """
+    ref = get_reference_range(test_name)
+
     if min_ref is not None and max_ref is not None:
-        low, high = min_ref, max_ref
-        span = high - low
-        crit_low, crit_high = low - span * 0.5, high + span * 0.5
-        ref_unit = unit
+        low, high, ref_unit = min_ref, max_ref, unit
+        # Prefer real clinical critical thresholds when we know this test.
+        # Deriving them from the range span alone fails badly for wide ranges
+        # (platelets 150-450 would put critical_low at 0, so a platelet count
+        # of 18 — a genuine emergency — would only read as "Warning").
+        # The overlap check guards against unit/scale mismatches between the
+        # dataset's range and the curated one (e.g. free T4 vs total T4).
+        overlaps = ref is not None and ref["low"] <= high and ref["high"] >= low
+        if overlaps:
+            crit_low = min(ref["critical_low"], low)
+            crit_high = max(ref["critical_high"], high)
+        else:
+            span = high - low
+            crit_low, crit_high = low - span * 0.5, high + span * 0.5
     else:
-        ref = get_reference_range(test_name)
         if ref is None:
             return {
                 "test_name": test_name,
@@ -68,6 +79,47 @@ def classify_lab_result(
         "status": status,
         "reference_range": f"{low}-{high} {ref_unit}",
         "deviation": deviation,
+    }
+
+
+_NEGATIVE_TERMS = {"negatif", "negative", "normal", "yok", "none", "-"}
+_GRADE_SEVERITY = {"eser": "Warning", "trace": "Warning", "1+": "Warning", "2+": "Warning",
+                   "3+": "Critical", "4+": "Critical", "pozitif": "Warning", "positive": "Warning"}
+
+
+def _norm_qual(text: str) -> str:
+    return " ".join(str(text).strip().casefold().split())
+
+
+@mcp.tool()
+def classify_qualitative_result(test_name: str, value: str, reference: str = "", unit: str = "") -> dict:
+    """Classify a non-numeric lab result (e.g. urine strip: 'Negatif', '1+', 'Normal').
+
+    Compares the qualitative value against the expected reference value. Graded
+    positives ('1+'/'2+') are treated as Warning and heavy grades ('3+'/'4+')
+    as Critical, since the source dataset gives no numeric bounds for these.
+    """
+    val_n = _norm_qual(value)
+    ref_n = _norm_qual(reference)
+
+    if ref_n and val_n == ref_n:
+        status, deviation = "Normal", None
+    elif val_n in _NEGATIVE_TERMS:
+        status, deviation = "Normal", None
+    elif val_n in _GRADE_SEVERITY:
+        status = _GRADE_SEVERITY[val_n]
+        deviation = f"reported '{value}' where reference expects '{reference or 'negative'}'"
+    else:
+        status, deviation = "Unknown", None
+
+    return {
+        "test_name": test_name,
+        "value": value,
+        "unit": unit,
+        "status": status,
+        "reference_range": reference or None,
+        "deviation": deviation,
+        "qualitative": True,
     }
 
 

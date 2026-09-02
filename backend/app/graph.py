@@ -30,12 +30,32 @@ class GraphState(TypedDict, total=False):
 
 
 async def _classify_one(client: MCPToolClient, lab: LabRecord, errors: List[dict]) -> Optional[Dict[str, Any]]:
+    # Qualitative rows (urine strips: "Negatif", "1+") have no numeric bounds,
+    # so they go to a different classifier tool.
+    if lab.is_qualitative:
+        try:
+            result = await client.call_tool(
+                "classify_qualitative_result",
+                {
+                    "test_name": lab.test_name,
+                    "value": lab.result,
+                    "reference": lab.reference_range or "",
+                    "unit": lab.unit or "",
+                },
+            )
+        except Exception as exc:
+            errors.append({"test_name": lab.test_name, "error": f"Classification failed: {exc}"})
+            return None
+        result["source_status"] = lab.status
+        result["source_followup"] = lab.recommended_followup
+        return result
+
     args = {
         "test_name": lab.test_name,
         "value": lab.result,
         "unit": lab.unit or "",
-        "min_ref": lab.min_refer,
-        "max_ref": lab.max_refer,
+        "min_ref": lab.min_reference,
+        "max_ref": lab.max_reference,
     }
     try:
         result = await client.call_tool("classify_lab_result", args)
