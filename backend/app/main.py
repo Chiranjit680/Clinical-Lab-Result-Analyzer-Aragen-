@@ -31,6 +31,8 @@ app.include_router(labs.router)
 
 
 def main() -> None:
+    """Run with: `python -m app.main` from the `backend/` directory (not `backend/app/`) —
+    the `app.` package imports throughout this codebase need `backend/` on sys.path."""
     import uvicorn
 
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
