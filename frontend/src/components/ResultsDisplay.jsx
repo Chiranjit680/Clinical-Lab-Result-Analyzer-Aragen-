@@ -1,3 +1,4 @@
+import LevelChart from "./LevelChart";
 import SeverityBadge, { severityKey } from "./SeverityBadge";
 
 const SECTIONS = [
@@ -101,6 +102,8 @@ export default function ResultsDisplay({ data }) {
       </div>
 
       {total === 0 && !errors.length && <p className="empty">No results to display.</p>}
+
+      <LevelChart data={data} />
 
       {SECTIONS.map(({ key, title, blurb }) => {
         const items = results[key] || [];

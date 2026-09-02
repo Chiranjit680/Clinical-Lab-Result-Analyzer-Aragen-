@@ -517,14 +517,289 @@ body {
   font-style: italic;
 }
 
-/* ---------- follow-up chat ---------- */
-.chat {
-  margin-top: 2rem;
+/* ---------- level chart (value vs reference range) ---------- */
+/* Status palette validated with the dataviz validator (scripts/validate_palette.js).
+   Red/amber/green is mandated by the brief, and red-vs-green is inseparable under
+   deuteranopia at any hue — so status is ALSO carried by marker shape (circle /
+   diamond / triangle), the icon+label badge, and position relative to the band.
+   Colour is never the only channel. */
+:root {
+  --st-normal: #0ca30c;
+  --st-warning: #fab219;
+  --st-critical: #d03b3b;
+  --st-normal-band: #e6f5e6;
+}
+
+.lc {
+  margin-top: 1.75rem;
   background: var(--white);
   border: 1px solid var(--line);
-  border-top: 4px solid var(--blue-700);
   border-radius: 10px;
+  padding: 1.15rem 1.25rem 1.4rem;
+}
+
+.lc__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lc__head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--blue-900);
+}
+
+.lc__legend {
+  display: flex;
+  gap: 0.9rem;
+}
+
+.lc__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.lc__swatch {
+  width: 12px;
+  height: 12px;
+}
+
+.lc__swatch--normal { fill: var(--st-normal); }
+.lc__swatch--warning { fill: var(--st-warning); }
+.lc__swatch--critical { fill: var(--st-critical); }
+
+.lc__caption {
+  margin: 0.45rem 0 1rem;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  max-width: 62ch;
+}
+
+.lc__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.lc__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 148px) 1fr minmax(72px, auto);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lc__label {
+  font-size: 0.85rem;
+  color: var(--ink);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lc__track {
+  position: relative;
+  height: 26px;
+  border-radius: 4px;
+  background: linear-gradient(var(--blue-050), var(--blue-050)) padding-box;
+}
+
+.lc__track:focus-visible {
+  outline: 2px solid var(--blue-500);
+  outline-offset: 2px;
+}
+
+/* The "normal" band — recessive, so the markers carry attention. */
+.lc__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--st-normal-band);
+  border-radius: 4px;
+}
+
+.lc__edge {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 1px;
+  background: rgba(12, 163, 12, 0.45);
+}
+
+.lc__marker {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  /* 2px surface ring keeps the mark legible on band or track, and rescues the
+     low-contrast amber against white. */
+  stroke: var(--white);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+
+.lc__marker--normal { fill: var(--st-normal); }
+.lc__marker--warning { fill: var(--st-warning); }
+.lc__marker--critical { fill: var(--st-critical); }
+
+/* Pinned to the domain edge because the true value is off-scale. */
+.lc__marker--clamped {
+  filter: drop-shadow(0 0 0 var(--ink));
+  opacity: 0.95;
+}
+
+.lc__marker--clamped::after {
+  content: "";
+}
+
+.lc__value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.lc__value--critical { color: var(--critical); }
+.lc__value--warning { color: var(--warning); }
+.lc__value--normal { color: var(--ink-soft); }
+.lc__value--unknown { color: var(--ink-soft); }
+
+.lc__unit {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+/* Hover/focus tooltip — an HTML chart should be interactive. */
+.lc__tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  gap: 0.1rem;
+  z-index: 5;
+  padding: 0.45rem 0.6rem;
+  background: var(--blue-900);
+  color: var(--white);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lc__track:hover .lc__tip,
+.lc__track:focus-visible .lc__tip {
+  display: flex;
+}
+
+.lc__axis {
+  position: relative;
+  height: 1.1rem;
+  margin: 0.35rem 0 0;
+  /* Align with the track column of .lc__row */
+  margin-left: calc(min(148px, max(90px, 22%)) + 0.75rem);
+  margin-right: calc(72px + 0.75rem);
+}
+
+.lc__axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.lc__note {
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .lc__row {
+    grid-template-columns: minmax(70px, 96px) 1fr minmax(56px, auto);
+    gap: 0.5rem;
+  }
+  .lc__axis { display: none; }
+}
+
+/* ---------- follow-up chat ---------- */
+/* Side drawer, pinned to the right edge and translated off-screen when closed. */
+.chat--panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  width: min(420px, 100vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-left: 1px solid var(--line);
+  box-shadow: -6px 0 24px rgba(10, 47, 102, 0.12);
+  transform: translateX(100%);
+  transition: transform 0.28s ease;
+  visibility: hidden;
+}
+
+.chat--open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat--panel { transition: none; }
+}
+
+/* Floating launcher */
+.chat__launcher {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 1.1rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--orange-500);
+  color: var(--white);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(210, 84, 31, 0.35);
+}
+
+.chat__launcher:hover {
+  background: var(--orange-600);
+}
+
+/* Only dims/blocks on narrow screens, where the drawer overlays content. */
+.chat__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(10, 47, 102, 0.28);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.28s ease;
+}
+
+@media (max-width: 900px) {
+  .chat__scrim--on {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 
 .chat__head {
@@ -535,6 +810,27 @@ body {
   padding: 0.9rem 1.15rem;
   border-bottom: 1px solid var(--line);
   background: var(--blue-050);
+  flex: none;
+}
+
+.chat__head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.chat__close {
+  border: none;
+  background: none;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0 0.15rem;
+}
+
+.chat__close:hover {
+  color: var(--critical);
 }
 
 .chat__head h2 {
@@ -567,7 +863,8 @@ body {
 
 .chat__log {
   padding: 1.1rem 1.15rem;
-  max-height: 420px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -662,6 +959,12 @@ body {
   padding: 0.85rem 1.15rem;
   border-top: 1px solid var(--line);
   background: var(--blue-050);
+  flex: none;
+}
+
+/* Bubbles get more room in the narrower drawer. */
+.chat--panel .bubble {
+  max-width: 88%;
 }
 
 .chat__form input {

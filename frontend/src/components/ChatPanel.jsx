@@ -12,8 +12,19 @@ export default function ChatPanel({ threadId }) {
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState("connecting");
   const [pending, setPending] = useState(false);
+  const [open, setOpen] = useState(false);
   const socketRef = useRef(null);
   const endRef = useRef(null);
+
+  // Escape closes the panel, as expected for a drawer.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   useEffect(() => {
     if (!threadId) return undefined;
@@ -58,17 +69,46 @@ export default function ChatPanel({ threadId }) {
   if (!threadId) return null;
 
   return (
-    <section className="chat">
-      <header className="chat__head">
-        <h2>Ask about these results</h2>
-        <span className={`chat__status chat__status--${status}`}>
-          {status === "open"
-            ? "connected"
-            : status === "connecting"
-              ? "connecting…"
-              : "disconnected"}
-        </span>
-      </header>
+    <>
+      {/* Launcher — only rendered while the panel is closed. */}
+      {!open && (
+        <button type="button" className="chat__launcher" onClick={() => setOpen(true)}>
+          <span aria-hidden="true">💬</span> Ask about these results
+        </button>
+      )}
+
+      {/* Backdrop is only interactive on narrow screens, where the panel overlays. */}
+      <div
+        className={`chat__scrim${open ? " chat__scrim--on" : ""}`}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+
+      <aside
+        className={`chat chat--panel${open ? " chat--open" : ""}`}
+        aria-label="Follow-up chat"
+        aria-hidden={!open}
+      >
+        <header className="chat__head">
+          <h2>Ask about these results</h2>
+          <div className="chat__head-right">
+            <span className={`chat__status chat__status--${status}`}>
+              {status === "open"
+                ? "connected"
+                : status === "connecting"
+                  ? "connecting…"
+                  : "disconnected"}
+            </span>
+            <button
+              type="button"
+              className="chat__close"
+              onClick={() => setOpen(false)}
+              aria-label="Close chat"
+            >
+              ×
+            </button>
+          </div>
+        </header>
 
       <div className="chat__log">
         {messages.length === 0 && (
@@ -118,6 +158,7 @@ export default function ChatPanel({ threadId }) {
           Send
         </button>
       </form>
-    </section>
+      </aside>
+    </>
   );
 }
