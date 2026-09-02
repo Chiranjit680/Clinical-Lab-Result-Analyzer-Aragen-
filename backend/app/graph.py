@@ -8,6 +8,8 @@ explain_result) — LangGraph just gives the pipeline an explicit graph shape
 with a real conditional branch on severity, instead of a plain function.
 """
 
+import logging
+import time
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -16,10 +18,13 @@ from pydantic import ValidationError
 from app.mcp_client import MCPToolClient
 from app.schemas import LabRecord
 
+logger = logging.getLogger("agent")
+
 BUCKET_ORDER = ["critical", "warning", "unknown", "normal"]
 
 
 class GraphState(TypedDict, total=False):
+    run_id: str
     raw_labs: List[Dict[str, Any]]
     validated: List[LabRecord]
     errors: List[dict]
@@ -29,12 +34,50 @@ class GraphState(TypedDict, total=False):
     response: Dict[str, Any]
 
 
-async def _classify_one(client: MCPToolClient, lab: LabRecord, errors: List[dict]) -> Optional[Dict[str, Any]]:
+def _log(state: GraphState, message: str, level: int = logging.INFO) -> None:
+    logger.log(level, "[%s] %s", state.get("run_id", "-"), message)
+
+
+async def _call_tool_logged(
+    client: MCPToolClient, state: GraphState, name: str, args: Dict[str, Any], label: str = ""
+) -> Dict[str, Any]:
+    """Wrap every MCP call so each crossing of the process boundary is visible,
+    with its duration — the tool calls are where nearly all the latency lives."""
+    started = time.perf_counter()
+    suffix = f" {label}" if label else ""
+    try:
+        result = await client.call_tool(name, args)
+    except Exception as exc:
+        elapsed = (time.perf_counter() - started) * 1000
+        _log(state, f"    tool {name}{suffix} FAILED after {elapsed:.0f}ms: {exc}", logging.WARNING)
+        raise
+    elapsed = (time.perf_counter() - started) * 1000
+    _log(state, f"    tool {name}{suffix} -> ok ({elapsed:.0f}ms)")
+    return result
+
+
+def _attach_source_fields(result: Dict[str, Any], lab: LabRecord) -> None:
+    """Carry source-record context onto the result, preferring English where
+    the translate node produced it, and keeping the originals for traceability."""
+    result["source_status"] = lab.status_en or lab.status
+    result["source_followup"] = lab.recommended_followup_en or lab.recommended_followup
+    result["source_comment"] = lab.comment_en or lab.comment
+    if lab.test_name_en and lab.test_name_en != lab.test_name:
+        result["test_name_original"] = lab.test_name
+        result["test_name"] = lab.test_name_en
+
+
+async def _classify_one(
+    client: MCPToolClient, state: GraphState, lab: LabRecord, errors: List[dict]
+) -> Optional[Dict[str, Any]]:
     # Qualitative rows (urine strips: "Negatif", "1+") have no numeric bounds,
     # so they go to a different classifier tool.
     if lab.is_qualitative:
+        _log(state, f"  '{lab.test_name}' = '{lab.result}' (qualitative)")
         try:
-            result = await client.call_tool(
+            result = await _call_tool_logged(
+                client,
+                state,
                 "classify_qualitative_result",
                 {
                     "test_name": lab.test_name,
@@ -46,8 +89,8 @@ async def _classify_one(client: MCPToolClient, lab: LabRecord, errors: List[dict
         except Exception as exc:
             errors.append({"test_name": lab.test_name, "error": f"Classification failed: {exc}"})
             return None
-        result["source_status"] = lab.status
-        result["source_followup"] = lab.recommended_followup
+        _log(state, f"  -> {result.get('status')}")
+        _attach_source_fields(result, lab)
         return result
 
     args = {
@@ -57,16 +100,21 @@ async def _classify_one(client: MCPToolClient, lab: LabRecord, errors: List[dict
         "min_ref": lab.min_reference,
         "max_ref": lab.max_reference,
     }
+    range_src = "dataset range" if lab.min_reference is not None else "curated dict"
+    _log(state, f"  '{lab.test_name}' = {lab.result} {lab.unit or ''} (via {range_src})")
     try:
-        result = await client.call_tool("classify_lab_result", args)
+        result = await _call_tool_logged(client, state, "classify_lab_result", args)
     except Exception as exc:
         errors.append({"test_name": lab.test_name, "error": f"Classification failed: {exc}"})
         return None
 
     if result.get("status") == "Unknown":
         # Unknown test with no dataset range: fall back to the LLM-assisted lookup tool.
+        _log(state, f"  '{lab.test_name}' unknown -> falling back to reference_range_lookup")
         try:
-            lookup = await client.call_tool("reference_range_lookup", {"test_name": lab.test_name})
+            lookup = await _call_tool_logged(
+                client, state, "reference_range_lookup", {"test_name": lab.test_name}
+            )
         except Exception:
             lookup = {"found": False}
 
@@ -98,9 +146,13 @@ async def _classify_one(client: MCPToolClient, lab: LabRecord, errors: List[dict
                 "reference_range": f"{low}-{high} {ref_unit}",
                 "deviation": None,
             }
+            _log(state, f"  lookup resolved range {low}-{high} {ref_unit}")
+        else:
+            _log(state, "  lookup returned nothing usable; staying Unknown", logging.WARNING)
 
-    result["source_status"] = lab.status
-    result["source_followup"] = lab.recommended_followup
+    _log(state, f"  -> {result.get('status')}")
+
+    _attach_source_fields(result, lab)
     return result
 
 
@@ -108,6 +160,8 @@ def build_graph(client: MCPToolClient):
     """Compile the StateGraph, closing over the (already-started) MCP client."""
 
     async def validate_node(state: GraphState) -> dict:
+        started = time.perf_counter()
+        _log(state, f"NODE validate | {len(state['raw_labs'])} row(s) submitted")
         validated, errors = [], []
         for raw in state["raw_labs"]:
             try:
@@ -116,15 +170,83 @@ def build_graph(client: MCPToolClient):
                 name = raw.get("Test_Name") or raw.get("test_name")
                 missing = ", ".join(sorted({str(e["loc"][-1]) for e in exc.errors()}))
                 errors.append({"test_name": name, "error": f"Invalid/missing field(s): {missing}"})
+                _log(state, f"  rejected '{name or '(unnamed)'}': {missing}", logging.WARNING)
+        _log(
+            state,
+            f"NODE validate done | {len(validated)} valid, {len(errors)} rejected "
+            f"({(time.perf_counter() - started) * 1000:.0f}ms)",
+        )
         return {"validated": validated, "errors": errors}
 
+    async def translate_node(state: GraphState) -> dict:
+        """Translate Turkish source fields to English in one batched tool call.
+
+        Downstream literature search and LLM explanations both work in English,
+        so this runs before classification. Originals are preserved on the
+        record; on failure every field falls back to its original value.
+        """
+        started = time.perf_counter()
+        labs = state["validated"]
+        if not labs:
+            _log(state, "NODE translate | skipped (nothing valid to translate)")
+            return {"validated": labs}
+
+        # Flatten the fields needing translation into one ordered list.
+        fields = ("test_name", "status", "comment", "recommended_followup")
+        payload: List[str] = []
+        for lab in labs:
+            payload.extend(str(getattr(lab, f) or "") for f in fields)
+
+        _log(state, f"NODE translate | {len(payload)} field(s) across {len(labs)} record(s), 1 batched call")
+        try:
+            resp = await _call_tool_logged(client, state, "translate_to_english", {"texts": payload})
+            translations = resp.get("translations", payload)
+            _log(state, f"  translation source: {resp.get('source', 'unknown')}")
+        except Exception:
+            _log(state, "  translation failed; keeping original text", logging.WARNING)
+            translations = payload
+
+        if len(translations) != len(payload):
+            _log(state, "  length mismatch in translation response; keeping originals", logging.WARNING)
+            translations = payload
+
+        translated = []
+        for i, lab in enumerate(labs):
+            chunk = translations[i * len(fields) : (i + 1) * len(fields)]
+            translated.append(
+                lab.model_copy(
+                    update={
+                        "test_name_en": chunk[0] or lab.test_name,
+                        "status_en": chunk[1] or lab.status,
+                        "comment_en": chunk[2] or lab.comment,
+                        "recommended_followup_en": chunk[3] or lab.recommended_followup,
+                    }
+                )
+            )
+        renamed = [
+            f"{lab.test_name} -> {lab.test_name_en}"
+            for lab in translated
+            if lab.test_name_en and lab.test_name_en != lab.test_name
+        ]
+        if renamed:
+            _log(state, f"  renamed: {'; '.join(renamed[:6])}{' …' if len(renamed) > 6 else ''}")
+        _log(state, f"NODE translate done ({(time.perf_counter() - started) * 1000:.0f}ms)")
+        return {"validated": translated}
+
     async def classify_node(state: GraphState) -> dict:
+        started = time.perf_counter()
+        _log(state, f"NODE classify | {len(state['validated'])} record(s)")
         classified = []
         errors = list(state.get("errors", []))
         for lab in state["validated"]:
-            result = await _classify_one(client, lab, errors)
+            result = await _classify_one(client, state, lab, errors)
             if result is not None:
                 classified.append(result)
+        _log(
+            state,
+            f"NODE classify done | {len(classified)} classified "
+            f"({(time.perf_counter() - started) * 1000:.0f}ms)",
+        )
         return {"classified": classified, "errors": errors}
 
     async def route_node(state: GraphState) -> dict:
@@ -132,22 +254,32 @@ def build_graph(client: MCPToolClient):
         for result in state["classified"]:
             key = str(result.get("status", "Unknown")).lower()
             buckets[key if key in buckets else "unknown"].append(result)
+        tally = ", ".join(f"{k}={len(v)}" for k, v in buckets.items())
+        _log(state, f"NODE route | {tally}")
         return {"buckets": buckets, "has_critical": len(buckets["critical"]) > 0}
 
     def route_condition(state: GraphState) -> str:
-        return "critical_alert" if state.get("has_critical") else "explain"
+        branch = "critical_alert" if state.get("has_critical") else "explain"
+        _log(state, f"BRANCH route -> {branch}")
+        return branch
 
     async def critical_alert_node(state: GraphState) -> dict:
         """Runs only when at least one Critical result exists; flags it for urgent review."""
-        for result in state["buckets"]["critical"]:
+        criticals = state["buckets"]["critical"]
+        names = ", ".join(str(r.get("test_name")) for r in criticals)
+        _log(state, f"NODE critical_alert | flagging {len(criticals)} urgent: {names}", logging.WARNING)
+        for result in criticals:
             result["urgent"] = True
         return {"buckets": state["buckets"]}
 
     async def explain_node(state: GraphState) -> dict:
+        started = time.perf_counter()
         buckets = state["buckets"]
         ordered = [r for key in BUCKET_ORDER for r in buckets[key]]
-        for result in ordered:
+        _log(state, f"NODE explain | {len(ordered)} result(s), critical-first order")
+        for position, result in enumerate(ordered, 1):
             status = result.get("status", "Unknown")
+            _log(state, f"  [{position}/{len(ordered)}] {result['test_name']} ({status})")
             base_args = {
                 "test_name": result["test_name"],
                 "value": result["value"],
@@ -165,9 +297,12 @@ def build_graph(client: MCPToolClient):
                 deviation = result.get("deviation") or ""
                 direction = "low" if "below" in deviation else "high" if "above" in deviation else "abnormal"
                 try:
-                    search = await client.call_tool(
+                    search = await _call_tool_logged(
+                        client,
+                        state,
                         "search_clinical_context",
                         {"test_name": result["test_name"], "direction": direction, "max_results": 3},
+                        label=f"({result['test_name']} {direction})",
                     )
                     if search.get("found"):
                         hits = search.get("results", [])
@@ -178,32 +313,44 @@ def build_graph(client: MCPToolClient):
                             {"title": r.get("title", ""), "url": r.get("url", "")} for r in hits
                         ]
                         result["source_type"] = search.get("source", "")
+                        _log(state, f"    grounded via {search.get('source')}: {len(hits)} source(s)")
+                    else:
+                        _log(state, "    no sources found; explaining without grounding", logging.WARNING)
                 except Exception:
                     context = ""
+            else:
+                _log(state, "    skipping research (not abnormal)")
 
             try:
-                explain_resp = await client.call_tool("explain_result", {**base_args, "context": context})
+                explain_resp = await _call_tool_logged(
+                    client, state, "explain_result", {**base_args, "context": context}
+                )
             except Exception as exc:
                 explain_resp = {"explanation": f"Unable to generate an explanation right now ({exc})."}
             result["explanation"] = explain_resp.get("explanation", "")
 
             if status == "Normal":
                 result["next_steps"] = result.get("source_followup") or "No action needed."
+                _log(state, "    next steps taken from source record (normal result)")
                 continue
 
             try:
-                next_steps_resp = await client.call_tool(
+                next_steps_resp = await _call_tool_logged(
+                    client,
+                    state,
                     "get_next_steps",
                     {**base_args, "explanation": result["explanation"], "context": context},
                 )
             except Exception:
                 next_steps_resp = {"next_steps": "Review with a clinician."}
             result["next_steps"] = next_steps_resp.get("next_steps", "") or (result.get("source_followup") or "")
+        _log(state, f"NODE explain done ({(time.perf_counter() - started) * 1000:.0f}ms)")
         return {"buckets": buckets}
 
     async def aggregate_node(state: GraphState) -> dict:
         buckets = state["buckets"]
         summary = {key: len(buckets[key]) for key in BUCKET_ORDER}
+        _log(state, f"NODE aggregate | summary={summary}, errors={len(state.get('errors', []))}")
         return {
             "response": {
                 "summary": summary,
@@ -214,6 +361,7 @@ def build_graph(client: MCPToolClient):
 
     graph = StateGraph(GraphState)
     graph.add_node("validate", validate_node)
+    graph.add_node("translate", translate_node)
     graph.add_node("classify", classify_node)
     graph.add_node("route", route_node)
     graph.add_node("critical_alert", critical_alert_node)
@@ -221,7 +369,8 @@ def build_graph(client: MCPToolClient):
     graph.add_node("aggregate", aggregate_node)
 
     graph.set_entry_point("validate")
-    graph.add_edge("validate", "classify")
+    graph.add_edge("validate", "translate")
+    graph.add_edge("translate", "classify")
     graph.add_edge("classify", "route")
     graph.add_conditional_edges("route", route_condition, {"critical_alert": "critical_alert", "explain": "explain"})
     graph.add_edge("critical_alert", "explain")

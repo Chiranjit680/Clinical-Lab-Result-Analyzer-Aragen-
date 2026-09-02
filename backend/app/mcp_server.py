@@ -82,6 +82,46 @@ def classify_lab_result(
     }
 
 
+@mcp.tool()
+def translate_to_english(texts: list[str]) -> dict:
+    """Batch-translate short clinical field values (test names, statuses,
+    comments, follow-ups) to English.
+
+    The source dataset is Turkish; translating up front means downstream
+    literature search and explanations work in English. Batched into a single
+    LLM call — one call per field would be far too slow for a full panel.
+    Returns the originals unchanged if translation fails.
+    """
+    items = [(i, t) for i, t in enumerate(texts) if t and str(t).strip()]
+    if not items:
+        return {"translations": list(texts), "source": "noop"}
+
+    numbered = "\n".join(f"{n}. {text}" for n, (_, text) in enumerate(items, 1))
+    prompt = (
+        "Translate each numbered clinical term/phrase below into English.\n"
+        "If an entry is already English, repeat it unchanged.\n"
+        "Use standard clinical terminology for lab test names "
+        "(e.g. 'Trombosit' -> 'Platelet Count', 'Lokosit' -> 'White Blood Cell Count').\n"
+        "Respond with ONLY a JSON array of strings, same length and order as the input.\n\n"
+        f"{numbered}"
+    )
+    raw = call_llm(prompt, system="You are a medical translator. Respond with a JSON array only, no prose.")
+
+    out = list(texts)
+    if raw is None:
+        return {"translations": out, "source": "fallback"}
+    try:
+        start, end = raw.index("["), raw.rindex("]") + 1
+        parsed = json.loads(raw[start:end])
+        if len(parsed) != len(items):
+            return {"translations": out, "source": "fallback"}
+        for (idx, _), translated in zip(items, parsed):
+            out[idx] = str(translated).strip()
+        return {"translations": out, "source": "llm"}
+    except (ValueError, json.JSONDecodeError):
+        return {"translations": out, "source": "fallback"}
+
+
 _NEGATIVE_TERMS = {"negatif", "negative", "normal", "yok", "none", "-"}
 _GRADE_SEVERITY = {"eser": "Warning", "trace": "Warning", "1+": "Warning", "2+": "Warning",
                    "3+": "Critical", "4+": "Critical", "pozitif": "Warning", "positive": "Warning"}

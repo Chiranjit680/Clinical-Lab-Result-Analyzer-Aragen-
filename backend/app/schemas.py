@@ -30,6 +30,12 @@ class LabRecord(BaseModel):
     unit_description: Optional[str] = Field(default=None, alias="Unit_Description")
     recommended_followup: Optional[str] = Field(default=None, alias="Recommended_Followup")
 
+    # Filled in by the graph's translate node (source data is Turkish).
+    test_name_en: Optional[str] = None
+    status_en: Optional[str] = None
+    comment_en: Optional[str] = None
+    recommended_followup_en: Optional[str] = None
+
     @field_validator("result", mode="before")
     @classmethod
     def _coerce_result(cls, v: Any) -> Union[float, str]:
@@ -83,6 +89,10 @@ class LabResult(BaseModel):
     next_steps: str = ""
     source_status: Optional[str] = None
     source_followup: Optional[str] = None
+    # Original (untranslated) values kept alongside, so a reviewer can always
+    # trace a translated label back to what the source record actually said.
+    test_name_original: Optional[str] = None
+    source_comment: Optional[str] = None
     urgent: Optional[bool] = None
     sources: List[Source] = []
     source_type: Optional[str] = None

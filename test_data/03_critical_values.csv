@@ -1,6 +1,0 @@
-Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
-2025-08-15,Hemoglobin,6.4,g/dL,12-15,Kritik Dusuk,Agir anemi,12,15,Gram/Desilitre,Acil hematoloji konsultasyonu
-2025-08-15,Trombosit,18,10^3/uL,150-450,Kritik Dusuk,Agir trombositopeni,150,450,Bin/uL,Acil hematoloji konsultasyonu
-2025-08-15,Lokosit,34.5,10^3/uL,5-10.6,Kritik Yuksek,Belirgin lokositoz,5,10.6,Bin/uL,Acil degerlendirme
-2025-08-15,Potasyum,7.1,mmol/L,3.5-5.1,Kritik Yuksek,Agir hiperkalemi,3.5,5.1,Milimol/Litre,Acil EKG ve tedavi
-2025-08-15,Glikozile Hemoglobin (HbA1c),11.8,%,4.0-6.0,Kritik Yuksek,Kontrolsuz diyabet,4.0,6.0,Yuzde,Acil endokrinoloji konsultasyonu

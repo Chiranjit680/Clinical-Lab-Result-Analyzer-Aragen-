@@ -1,8 +1,0 @@
-Date,Test_Name,Result,Unit,Reference_Range,Status,Comment,Min_Reference,Max_Reference,Unit_Description,Recommended_Followup
-2025-08-14,Hemoglobin,11.2,g/dL,12-15,Dusuk,Hafif anemi,12,15,Gram/Desilitre,Demir paneli onerilir
-2025-08-14,Trombosit,267,10^3/uL,150-450,Normal,Pihtilasma hucreleri normal,150,450,Bin/uL,Rutin kontrol
-2025-08-14,Lokosit,13.4,10^3/uL,5-10.6,Yuksek,Enfeksiyon olasiligi,5,10.6,Bin/uL,Enfeksiyon degerlendirmesi
-2025-08-14,Ferritin,9.1,ug/L,15-150,Dusuk,Demir depolari dusuk,15,150,Mikrogram/Litre,Demir replasmani degerlendirilmeli
-2025-08-14,Glikozile Hemoglobin (HbA1c),6.4,%,4.0-6.0,Yuksek,Prediyabet araligi,4.0,6.0,Yuzde,Diyet ve egzersiz danismanligi
-2025-08-14,Hematokrit,40,%,35-49,Normal,Hematokrit degeri normal,35,49,Yuzde,Rutin kontrol
-2025-08-14,Insulin,26.8,mU/L,2.6-24.9,Yuksek,Insulin direnci olasiligi,2.6,24.9,Miliunite/Litre,Endokrinoloji degerlendirmesi

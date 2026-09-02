@@ -1,0 +1,8 @@
+/* Base resets only — component styles live in App.css. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
