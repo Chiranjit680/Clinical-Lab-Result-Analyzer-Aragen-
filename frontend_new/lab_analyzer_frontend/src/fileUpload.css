@@ -1,0 +1,296 @@
+.upload {
+  --up-grad: linear-gradient(115deg, #1e3a8a 0%, #0f766e 42%, #0d9488 70%, #22c55e 100%);
+  --up-glow: rgba(13, 148, 136, 0.35);
+  --up-surface: rgba(255, 255, 255, 0.6);
+  --up-danger: #dc2626;
+
+  width: 100%;
+  max-width: 620px;
+  margin-inline: auto;
+  text-align: left;
+}
+
+@media (prefers-color-scheme: dark) {
+  .upload {
+    --up-grad: linear-gradient(115deg, #60a5fa 0%, #2dd4bf 45%, #34d399 75%, #4ade80 100%);
+    --up-glow: rgba(45, 212, 191, 0.3);
+    --up-surface: rgba(255, 255, 255, 0.03);
+    --up-danger: #f87171;
+  }
+}
+
+/* ---------- dropzone ---------- */
+
+.upload__zone {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 38px 24px 30px;
+  border: 2px dashed var(--accent-border);
+  border-radius: 20px;
+  background: var(--up-surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  text-align: center;
+  transition: border-color 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.3s ease, background 0.3s ease;
+}
+
+/* Tinted wash that fades up on hover and drag. */
+.upload__zone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(120% 90% at 50% 0%, var(--up-glow), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.upload__zone:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px -22px var(--up-glow);
+}
+
+.upload__zone:hover::before {
+  opacity: 0.5;
+}
+
+/* Keyboard focus lands on the visually-hidden input inside. */
+.upload__zone:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg);
+}
+
+.upload__zone.is-dragging {
+  border-color: transparent;
+  transform: scale(1.015);
+  box-shadow: 0 0 0 2px var(--accent), 0 22px 44px -24px var(--up-glow);
+}
+
+.upload__zone.is-dragging::before {
+  opacity: 1;
+}
+
+.upload__zone.has-error {
+  border-color: var(--up-danger);
+}
+
+/* Light sweep that runs across the zone while a file hovers over it. */
+.upload__zone.is-dragging::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  z-index: -1;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: upload-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes upload-sweep {
+  from {
+    transform: translateX(-160%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(360%) skewX(-18deg);
+  }
+}
+
+/* Visually hidden, but still focusable and announced by screen readers. */
+.upload__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.upload__icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  color: #fff;
+  background: var(--up-grad);
+  box-shadow: 0 10px 22px -10px var(--up-glow);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.upload__zone:hover .upload__icon {
+  transform: translateY(-3px) rotate(-4deg);
+}
+
+.upload__zone.is-dragging .upload__icon {
+  animation: upload-bob 0.9s ease-in-out infinite;
+}
+
+@keyframes upload-bob {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.upload__icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.upload__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.upload__hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.upload__btn {
+  margin-top: 6px;
+  padding: 10px 22px;
+  border: 0;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--up-grad);
+  background-size: 160% 100%;
+  cursor: pointer;
+  box-shadow: 0 10px 22px -12px var(--up-glow);
+  transition: background-position 0.45s ease, transform 0.2s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    background-position: 100% 0;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 26px -12px var(--up-glow);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+}
+
+/* ---------- selected file chip ---------- */
+
+.upload__file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--accent-bg);
+  animation: upload-rise 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes upload-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.upload__badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #fff;
+  background: var(--up-grad);
+}
+
+.upload__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.upload__name {
+  display: block;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload__size {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.upload__remove {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+
+  &:hover {
+    color: var(--up-danger);
+    border-color: var(--up-danger);
+    background: var(--bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.upload__error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 11px;
+  font-size: 14px;
+  color: var(--up-danger);
+  background: color-mix(in srgb, var(--up-danger) 10%, transparent);
+  animation: upload-rise 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (max-width: 480px) {
+  .upload__zone {
+    padding: 28px 16px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upload__zone,
+  .upload__icon,
+  .upload__btn,
+  .upload__file,
+  .upload__error {
+    animation: none;
+    transition-duration: 0.01ms;
+  }
+}
