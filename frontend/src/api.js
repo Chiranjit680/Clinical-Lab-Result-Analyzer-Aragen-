@@ -81,3 +81,36 @@ export function parseCsv(text) {
     }, {})
   );
 }
+
+/**
+ * POST /analyze_report -> AnalyzeLabsResponse
+ *
+ * Sends a PDF for server-side extraction. Content-Type is left unset so the
+ * browser supplies the multipart boundary itself.
+ */
+export async function analyzeReportPdf(file) {
+  const form = new FormData();
+  form.append("file", file);
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/analyze_report`, { method: "POST", body: form });
+  } catch {
+    throw new Error(
+      `Cannot reach the analyzer API at ${API_BASE}. Is the backend running (python -m app.main)?`
+    );
+  }
+
+  if (!response.ok) {
+    // FastAPI puts the useful message in `detail`; fall back to raw text.
+    const raw = await response.text();
+    let detail = raw;
+    try {
+      detail = JSON.parse(raw).detail ?? raw;
+    } catch {
+      /* not JSON — keep the raw body */
+    }
+    throw new Error(`Report analysis failed (HTTP ${response.status}): ${String(detail).slice(0, 300)}`);
+  }
+  return response.json();
+}

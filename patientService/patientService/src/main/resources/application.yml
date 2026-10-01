@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/lab-analyzer
+    username: postgres
+    password: unlockit
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    # The existing database was created by hand and has no Flyway history.
+    # Baselining at 0 lets Flyway adopt it and still run V1/V2, which are
+    # written with IF NOT EXISTS so they are no-ops there but build a fresh
+    # database from scratch.
+    baseline-on-migrate: true
+    baseline-version: 0
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: 8082
+
+app:
+  # Relative to the process working directory. Override with APP_UPLOAD_DIR.
+  upload-dir: uploads
