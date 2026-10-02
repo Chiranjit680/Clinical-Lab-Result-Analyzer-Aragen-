@@ -88,6 +88,13 @@ export default function ReportList({ patientId }) {
       )}
 
       {reports.length > 0 && (
+        <p className="hint">
+          Analysing a full panel takes a minute or two — every abnormal result is researched before
+          it is explained. The results appear below and now survive switching tabs.
+        </p>
+      )}
+
+      {reports.length > 0 && (
         <ul className="reports">
           {reports.map((report) => (
             <li className="reports__item" key={report.id}>

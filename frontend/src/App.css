@@ -1141,3 +1141,9 @@ body {
     flex-basis: 100%;
   }
 }
+
+/* View wrappers rely on the hidden attribute. Any author-level display rule
+   would outrank the UA default and leave every view visible at once. */
+[hidden] {
+  display: none !important;
+}

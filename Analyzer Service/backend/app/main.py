@@ -54,7 +54,9 @@ def main() -> None:
     the `app.` package imports throughout this codebase need `backend/` on sys.path."""
     import uvicorn
 
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    # PORT lets a launcher move the service when 8000 is taken; the frontend is
+    # told the same value through VITE_API_BASE.
+    uvicorn.run("app.main:app", host="127.0.0.1", port=int(os.environ.get("PORT", "8000")), reload=True)
 
 
 if __name__ == "__main__":

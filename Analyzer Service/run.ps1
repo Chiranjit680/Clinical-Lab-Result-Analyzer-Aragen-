@@ -15,8 +15,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+$repoRoot = Split-Path $root -Parent
 $backend = Join-Path $root "backend"
-$frontend = Join-Path $root "frontend"
+# The frontend is shared by both services, so it lives at the repository root
+# rather than inside "Analyzer Service" alongside this script.
+$frontend = Join-Path $repoRoot "frontend"
 $venvPython = Join-Path $backend "venv\Scripts\python.exe"
 
 $backendProcess = $null
@@ -33,7 +36,7 @@ function Stop-Servers {
 try {
     # ---------- checks ----------
     if (-not (Test-Path $backend)) { throw "backend/ not found at $backend" }
-    if (-not (Test-Path $frontend)) { throw "frontend/ not found at $frontend" }
+    if (-not (Test-Path $frontend)) { throw "frontend/ not found at $frontend (expected at the repository root, beside 'Analyzer Service')" }
 
     if (-not (Test-Path (Join-Path $backend ".env"))) {
         Write-Host "WARNING: backend\.env not found - copy .env.example and add your API key." -ForegroundColor Yellow
@@ -86,6 +89,7 @@ try {
 
     # ---------- start frontend (foreground) ----------
     Write-Host "Starting frontend on http://localhost:5173 ..." -ForegroundColor Green
+    Write-Host "Note: the 'Add lab report' page also needs patientService on :8082, which this script does not start." -ForegroundColor DarkGray
     Write-Host "Press Ctrl+C to stop both servers.`n" -ForegroundColor Cyan
     Push-Location $frontend
     try { & npm run dev } finally { Pop-Location }
