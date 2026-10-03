@@ -21,4 +21,14 @@ public class ReportResponse {
 
 	private Instant createdAt;
 
+	/**
+	 * Whether a stored analysis exists for this report. Derived from the
+	 * relationship rather than kept as its own column, so it cannot drift out
+	 * of step with reality.
+	 */
+	private boolean analysisAvailable;
+
+	/** Id of that analysis, or null when there is none. */
+	private UUID analysisId;
+
 }

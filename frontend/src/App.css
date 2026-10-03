@@ -21,15 +21,34 @@
   --ink-soft: #55606d;
   --line: #dbe4ee;
   --white: #ffffff;
+
+  /* Background texture. Kept as tokens because the right weight is a judgement
+     call: these are the two values to turn if the page feels busy or flat. */
+  --grid-line: rgba(31, 111, 208, 0.05);
+  --grid-dot: rgba(31, 111, 208, 0.07);
+  --wash-blue: rgba(31, 111, 208, 0.1);
+  --wash-orange: rgba(242, 101, 34, 0.07);
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* Five stacked layers, listed topmost first as CSS wants them: a dot grid and
+   a coarser rule grid for lab-notebook paper, then two corner washes so the
+   field is not a flat slab. Fixed attachment keeps the texture still while the
+   content scrolls over it — it is a surface, not part of the page. */
 body {
   margin: 0;
-  background: var(--blue-050);
+  background-color: var(--blue-050);
+  background-image:
+    radial-gradient(var(--grid-dot) 1px, transparent 1.3px),
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px),
+    radial-gradient(900px 620px at 0% 0%, var(--wash-blue), transparent 70%),
+    radial-gradient(820px 600px at 100% 100%, var(--wash-orange), transparent 70%);
+  background-size: 22px 22px, 88px 88px, 88px 88px, 100% 100%, 100% 100%;
+  background-attachment: fixed;
   color: var(--ink);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   line-height: 1.55;
@@ -73,6 +92,116 @@ body {
   /* Not enough horizontal room for the image without crowding the content. */
   .app__backdrop {
     display: none;
+  }
+}
+
+/* ---------- decorative shapes (BackgroundDecor) ---------- */
+
+/* One fixed layer holding every drawn shape. overflow: hidden matters: the
+   helix and the trace deliberately run past the viewport edge. */
+.decor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.decor > svg {
+  position: absolute;
+  display: block;
+}
+
+/* Left margin, running the full height and off both ends. */
+.decor__helix {
+  top: -40px;
+  left: -34px;
+  width: 152px;
+  height: calc(100vh + 80px);
+  opacity: 0.36;
+  /* Fades at both ends so the strands do not stop in mid-air. */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14%,
+    #000 82%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 82%, transparent 100%);
+  animation: decor-drift 34s ease-in-out infinite alternate;
+}
+
+.decor__molecule--top {
+  top: 16%;
+  right: 7%;
+  width: 180px;
+  opacity: 0.42;
+  animation: decor-spin 90s linear infinite;
+}
+
+.decor__molecule--bottom {
+  bottom: 9%;
+  left: 15%;
+  width: 124px;
+  opacity: 0.6;
+  animation: decor-spin 120s linear infinite reverse;
+}
+
+/* Bottom rule, stretched across: preserveAspectRatio="none" on the element is
+   what lets it scale to any width without distorting the spike heights much. */
+.decor__trace {
+  bottom: 2.5rem;
+  left: 0;
+  width: 100%;
+  height: 72px;
+  opacity: 0.32;
+}
+
+.decor__dishes {
+  right: 4%;
+  bottom: 14%;
+  width: 210px;
+  opacity: 0.34;
+  animation: decor-drift 44s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes decor-drift {
+  from {
+    transform: translateY(-10px);
+  }
+  to {
+    transform: translateY(14px);
+  }
+}
+
+@keyframes decor-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Decoration must never be the reason someone cannot use the page. */
+@media (prefers-reduced-motion: reduce) {
+  .decor > svg {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  /* The helix survives as a left margin rule; the rest would crowd a phone. */
+  .decor__molecule,
+  .decor__dishes,
+  .decor__trace {
+    display: none;
+  }
+
+  .decor__helix {
+    width: 120px;
+    left: -46px;
+    opacity: 0.38;
   }
 }
 
@@ -1146,4 +1275,10 @@ body {
    would outrank the UA default and leave every view visible at once. */
 [hidden] {
   display: none !important;
+}
+
+/* Model prose: long, multi-paragraph, and needs line breaks preserved. */
+.vlm__answer {
+  white-space: pre-wrap;
+  margin: 0 0 12px;
 }

@@ -29,3 +29,16 @@ server:
 app:
   # Relative to the process working directory. Override with APP_UPLOAD_DIR.
   upload-dir: uploads
+
+  # The Python analyzer. Override with APP_ANALYZER_BASE_URL when it runs
+  # elsewhere, or when run.ps1 has moved it off its default port.
+  analyzer-base-url: http://127.0.0.1:8000
+  # A full panel researches every abnormal result before explaining it, so
+  # minutes are normal. Short enough to eventually give up, long enough not to
+  # abandon a run that would have succeeded.
+  analyzer-timeout-seconds: 600
+
+  # The Python email service. It holds the Gmail credential; this service sends
+  # it the report and the analysis with each request.
+  email-service-base-url: http://127.0.0.1:8083
+  email-timeout-seconds: 60

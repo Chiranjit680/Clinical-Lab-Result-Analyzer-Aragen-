@@ -1,0 +1,12 @@
+# The vision model is called over an OpenAI-compatible API, so neither torch
+# nor transformers is needed any more.
+openai>=1.30
+pillow>=10.0
+mcp>=1.2.0,<2.0.0
+langgraph>=1.0
+python-dotenv>=1.0
+
+# HTTP front door
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9

@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import LoadingStatus from "./LoadingStatus";
 import ResultsDisplay from "./ResultsDisplay";
 import SeverityBadge from "./SeverityBadge";
-import { analyzeLabs, analyzeReportPdf, parseCsv } from "../api";
-import { fetchReportFile, listReports, reportDownloadUrl } from "../patientApi";
+import {
+  analyzeStoredReport,
+  getReportAnalysis,
+  listReports,
+  reportDownloadUrl,
+} from "../patientApi";
 
 function fileNameOf(reportPath) {
   return String(reportPath || "").split("/").pop() || "";
@@ -18,15 +22,20 @@ function formatWhen(createdAt) {
 export default function ReportList({ patientId }) {
   const [reports, setReports] = useState([]);
   const [listError, setListError] = useState("");
-  const [busyId, setBusyId] = useState(null);
+
+  // Separate ids rather than one flag: running an analysis and opening a
+  // stored one are very different waits, and the buttons say so.
+  const [analyzingId, setAnalyzingId] = useState(null);
+  const [openingId, setOpeningId] = useState(null);
+
   const [error, setError] = useState("");
-  const [data, setData] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
 
   useEffect(() => {
     if (!patientId) return undefined;
 
-    // No state reset needed here: AddReport keys this component by patientId,
-    // so a patient change remounts it with fresh state.
+    // No state reset needed: the parent keys this component by patientId, so a
+    // patient change remounts it with fresh state.
     let cancelled = false;
     listReports(patientId)
       .then((rows) => {
@@ -36,42 +45,55 @@ export default function ReportList({ patientId }) {
         if (!cancelled) setListError(err.message);
       });
 
-    // A slow response for a previously selected patient must not overwrite the
-    // list for the one now selected.
     return () => {
       cancelled = true;
     };
   }, [patientId]);
 
+  /** Re-reads the list after an analysis, so analysisAvailable flips true. */
+  async function refresh() {
+    try {
+      setReports((await listReports(patientId)) || []);
+    } catch (err) {
+      setListError(err.message);
+    }
+  }
+
   async function handleAnalyze(report) {
-    const name = fileNameOf(report.reportPath);
-    setBusyId(report.id);
+    setAnalyzingId(report.id);
     setError("");
-    setData(null);
+    setAnalysis(null);
 
     try {
-      const file = await fetchReportFile(report.id, name);
-      const lower = name.toLowerCase();
-
-      if (lower.endsWith(".pdf")) {
-        // PDFs are extracted server-side by the LLM.
-        setData(await analyzeReportPdf(file));
-      } else if (lower.endsWith(".csv")) {
-        // CSVs already have structure, so parsing here skips an LLM round trip.
-        const rows = parseCsv(await file.text());
-        if (!rows.length) throw new Error("That CSV has no data rows.");
-        setData(await analyzeLabs(rows));
-      } else {
-        throw new Error(`Cannot analyze "${name}" — only PDF and CSV reports are supported.`);
-      }
+      const saved = await analyzeStoredReport(report.id);
+      setAnalysis(saved);
+      // Reload so analysisAvailable flips true and "See previous analysis"
+      // becomes usable without a manual refresh.
+      await refresh();
     } catch (err) {
       setError(err.message);
     } finally {
-      setBusyId(null);
+      setAnalyzingId(null);
+    }
+  }
+
+  async function handleShowPrevious(report) {
+    setOpeningId(report.id);
+    setError("");
+    setAnalysis(null);
+
+    try {
+      setAnalysis(await getReportAnalysis(report.id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setOpeningId(null);
     }
   }
 
   if (!patientId) return null;
+
+  const busy = analyzingId !== null || openingId !== null;
 
   return (
     <section className="panel">
@@ -90,7 +112,8 @@ export default function ReportList({ patientId }) {
       {reports.length > 0 && (
         <p className="hint">
           Analysing a full panel takes a minute or two — every abnormal result is researched before
-          it is explained. The results appear below and now survive switching tabs.
+          it is explained. The result is saved against the report, replacing any earlier one, and
+          can be reopened later without re-running it.
         </p>
       )}
 
@@ -113,9 +136,23 @@ export default function ReportList({ patientId }) {
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => handleAnalyze(report)}
-                disabled={busyId !== null}
+                disabled={busy}
               >
-                {busyId === report.id ? "Analyzing…" : "Analyze"}
+                {analyzingId === report.id ? "Analyzing…" : "Analyze"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => handleShowPrevious(report)}
+                disabled={busy || !report.analysisAvailable}
+                title={
+                  report.analysisAvailable
+                    ? "Open the saved analysis"
+                    : "This report has not been analysed yet"
+                }
+              >
+                {openingId === report.id ? "Opening…" : "See previous analysis"}
               </button>
             </li>
           ))}
@@ -128,9 +165,17 @@ export default function ReportList({ patientId }) {
         </div>
       )}
 
-      {busyId !== null && <LoadingStatus />}
+      {analyzingId !== null && <LoadingStatus />}
 
-      {busyId === null && data && <ResultsDisplay data={data} />}
+      {!busy && analysis && (
+        <>
+          <p className="hint">
+            Analysis from {formatWhen(analysis.createdAt)}
+            {analysis.durationMs ? ` · took ${Math.round(analysis.durationMs / 1000)}s` : ""}
+          </p>
+          <ResultsDisplay data={analysis.payload} />
+        </>
+      )}
     </section>
   );
 }

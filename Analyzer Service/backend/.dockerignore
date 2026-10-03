@@ -1,0 +1,17 @@
+# The virtualenv is gigabytes and would be copied into the build context
+# before the first instruction even runs.
+venv/
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets never belong in an image; supply them as environment variables.
+.env
+
+logs/
+tests/
+smoke_test.py
+Dockerfile
+.dockerignore

@@ -1,0 +1,16 @@
+# OAuth client from Google Cloud Console. The second pattern matches the name
+# Google downloads it under, which is easy to leave in place by accident.
+credentials.json
+client_secret*.json
+
+# Written after the first consent. Holds a refresh token that can send mail as
+# the authorising account until it is revoked — the most sensitive file here.
+token.json
+
+# May hold GMAIL_CREDENTIALS_PATH / GMAIL_TOKEN_PATH and anything else local.
+.env
+
+venv/
+.venv/
+__pycache__/
+*.py[cod]

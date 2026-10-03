@@ -90,3 +90,133 @@ export async function fetchReportFile(reportId, filename) {
   const blob = await response.blob();
   return new File([blob], filename || `report-${reportId}`, { type: blob.type });
 }
+
+/**
+ * POST /api/reports/{id}/analyze -> AnalysisResponse
+ *
+ * The patient service fetches its own stored file and calls the analyzer, so
+ * the browser never moves the document between services. Runs for a minute or
+ * two and replaces any previous analysis for that report.
+ */
+export function analyzeStoredReport(reportId) {
+  return request(`/api/reports/${reportId}/analyze`, { method: "POST" });
+}
+
+/** GET /api/reports/{id}/analysis -> AnalysisResponse (404 when none stored). */
+export function getReportAnalysis(reportId) {
+  return request(`/api/reports/${reportId}/analysis`);
+}
+
+/** POST /api/identities -> IdentityResponse */
+export function createPatient(patient) {
+  return request("/api/identities", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patient),
+  });
+}
+
+/**
+ * POST /api/reports/{id}/email -> { status, to }
+ *
+ * The patient service loads the file and the stored analysis and hands both to
+ * the email service, so nothing travels through the browser.
+ */
+export function emailReport(reportId, to, note) {
+  return request(`/api/reports/${reportId}/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, note: note || null }),
+  });
+}
+
+/**
+ * POST /api/images/upload -> RadiologyImageResponse
+ *
+ * Content-Type is left unset so the browser supplies the multipart boundary.
+ */
+export function uploadImage({ file, patientId, modality, bodyPart, description }) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("patientId", patientId);
+  form.append("modality", modality);
+  if (bodyPart) form.append("bodyPart", bodyPart);
+  if (description) form.append("description", description);
+
+  return request("/api/images/upload", { method: "POST", body: form });
+}
+
+/** GET /api/images/getall/{patientId} -> RadiologyImageResponse[] */
+export function listImages(patientId) {
+  return request(`/api/images/getall/${patientId}`);
+}
+
+/** Browser URL for viewing or downloading a stored image. */
+export function imageDownloadUrl(imageId) {
+  return `${PATIENT_API_BASE}/api/images/download/${imageId}`;
+}
+
+/**
+ * Downloads a stored image as a File, ready to post to the VLM service.
+ *
+ * The name is passed in rather than read from Content-Disposition, which is
+ * not exposed to cross-origin JS unless the server opts in.
+ */
+export async function fetchImageFile(imageId, filename) {
+  let response;
+  try {
+    response = await fetch(imageDownloadUrl(imageId));
+  } catch {
+    throw new Error(`Cannot reach the patient service at ${PATIENT_API_BASE}.`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Could not download that image (HTTP ${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  return new File([blob], filename || `image-${imageId}`, { type: blob.type });
+}
+
+/**
+ * PUT /api/images/{id}/analysis -> ImageAnalysisResponse
+ *
+ * Stores a VLM run against an image, replacing any previous one. The run itself
+ * happens in the browser because it takes minutes; this is the save step.
+ *
+ * The agent service answers in snake_case and the patient service expects
+ * camelCase, so the translation lives here — one place, rather than annotations
+ * spread through the Java DTO.
+ */
+export function saveImageAnalysis(imageId, result) {
+  return request(`/api/images/${imageId}/analysis`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      answer: result.answer,
+      globalSummary: result.global_summary || null,
+      question: result.question || null,
+      model: result.model || null,
+      runId: result.run_id || null,
+      seconds: typeof result.seconds === "number" ? result.seconds : null,
+      tiles: (result.tiles || []).map((tile) => ({
+        tileId: tile.tile_id,
+        report: tile.report,
+      })),
+    }),
+  });
+}
+
+/** GET /api/images/{id}/analysis -> ImageAnalysisResponse (404 when none). */
+export function getImageAnalysis(imageId) {
+  return request(`/api/images/${imageId}/analysis`);
+}
+
+/** POST /api/images/{id}/email — sends the image with its stored analysis. */
+export function emailImage(imageId, to, note) {
+  return request(`/api/images/${imageId}/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, note: note || null }),
+  });
+}

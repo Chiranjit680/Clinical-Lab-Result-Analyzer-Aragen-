@@ -1,8 +1,13 @@
 import { useState } from "react";
 import labTech from "./assets/labtech.jpeg";
+import BackgroundDecor from "./components/BackgroundDecor";
+import AddImage from "./components/AddImage";
+import AddPatient from "./components/AddPatient";
 import AddReport from "./components/AddReport";
 import ChatPanel from "./components/ChatPanel";
+import PatientImages from "./components/PatientImages";
 import PatientReports from "./components/PatientReports";
+import SendReport from "./components/SendReport";
 import LabInput from "./components/LabInput";
 import LoadingStatus from "./components/LoadingStatus";
 import ResultsDisplay from "./components/ResultsDisplay";
@@ -10,14 +15,24 @@ import ReportAnalyze from "./components/ReportAnalyze";
 import { analyzeLabs, analyzeReportPdf } from "./api";
 import "./App.css";
 
+// Ordered the way the work flows: a patient exists before a report is filed
+// against them, and reports exist before there is anything to browse.
 const VIEWS = [
   { id: "analyze", label: "Analyze" },
+  { id: "add-patient", label: "Add patient" },
   { id: "add-report", label: "Add lab report" },
+  { id: "add-image", label: "Add image" },
   { id: "patient-reports", label: "Patient reports" },
+  { id: "patient-images", label: "Patient images" },
+  { id: "send-report", label: "Send report" },
 ];
 
 export default function App() {
   const [view, setView] = useState("analyze");
+  // Bumped whenever a patient is added. Every view stays mounted, so without
+  // this the patient dropdowns would keep showing the list they fetched at
+  // startup and a new patient would be unselectable until a page reload.
+  const [patientsVersion, setPatientsVersion] = useState(0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -58,6 +73,8 @@ export default function App() {
         style={{ backgroundImage: `url(${labTech})` }}
         aria-hidden="true"
       />
+
+      <BackgroundDecor />
 
       <header className="app__header">
         <div className="app__brand">
@@ -107,12 +124,28 @@ export default function App() {
           {!loading && data?.thread_id && <ChatPanel threadId={data.thread_id} />}
         </div>
 
+        <div hidden={view !== "add-patient"}>
+          <AddPatient onCreated={() => setPatientsVersion((version) => version + 1)} />
+        </div>
+
         <div hidden={view !== "add-report"}>
-          <AddReport />
+          <AddReport patientsVersion={patientsVersion} />
+        </div>
+
+        <div hidden={view !== "add-image"}>
+          <AddImage patientsVersion={patientsVersion} />
         </div>
 
         <div hidden={view !== "patient-reports"}>
-          <PatientReports />
+          <PatientReports patientsVersion={patientsVersion} />
+        </div>
+
+        <div hidden={view !== "patient-images"}>
+          <PatientImages patientsVersion={patientsVersion} />
+        </div>
+
+        <div hidden={view !== "send-report"}>
+          <SendReport patientsVersion={patientsVersion} />
         </div>
       </main>
 

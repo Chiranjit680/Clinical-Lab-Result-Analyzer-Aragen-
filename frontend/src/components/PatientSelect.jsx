@@ -6,8 +6,14 @@ function patientLabel(patient) {
   return `${patient.fullName}${dob}`;
 }
 
-/** Patient dropdown, shared by the add-report and patient-reports pages. */
-export default function PatientSelect({ value, onChange, label = "Patient" }) {
+/**
+ * Patient dropdown, shared by the pages that need one.
+ *
+ * `refreshToken` exists because every view stays mounted: without it this
+ * effect would run once at startup and a patient added later would never
+ * appear in the list.
+ */
+export default function PatientSelect({ value, onChange, label = "Patient", refreshToken }) {
   const [patients, setPatients] = useState([]);
   const [error, setError] = useState("");
 
@@ -23,7 +29,7 @@ export default function PatientSelect({ value, onChange, label = "Patient" }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshToken]);
 
   if (error) {
     return (

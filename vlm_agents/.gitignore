@@ -1,0 +1,10 @@
+# Holds INFERENCE_API_KEY / VLM_API_KEY.
+.env
+
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Per-run artifact directories, when the pipeline is used with a RunStore.
+runs/

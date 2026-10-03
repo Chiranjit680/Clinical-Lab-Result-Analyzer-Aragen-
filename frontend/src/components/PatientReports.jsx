@@ -6,7 +6,7 @@ import ReportList from "./ReportList";
  * Browsing page: every stored report for one patient, each with its own
  * Analyze button. Read-only - saving new reports happens on the add page.
  */
-export default function PatientReports() {
+export default function PatientReports({ patientsVersion }) {
   const [patientId, setPatientId] = useState("");
 
   return (
@@ -14,7 +14,7 @@ export default function PatientReports() {
       <section className="panel">
         <h2 className="panel__title">Patient reports</h2>
 
-        <PatientSelect value={patientId} onChange={setPatientId} />
+        <PatientSelect value={patientId} onChange={setPatientId} refreshToken={patientsVersion} />
 
         {!patientId && (
           <p className="hint">Choose a patient to see every lab report stored for them.</p>

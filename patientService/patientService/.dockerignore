@@ -1,0 +1,16 @@
+# Build output is produced inside the image; copying it in would ship stale
+# classes and can mask a broken build.
+target/
+
+uploads/
+.mvn/wrapper/maven-wrapper.jar
+
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+
+Dockerfile
+.dockerignore
+compose.yaml

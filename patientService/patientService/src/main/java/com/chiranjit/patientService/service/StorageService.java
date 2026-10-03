@@ -51,8 +51,17 @@ public class StorageService {
 		}
 	}
 
-	/** Stores the file and returns its path relative to the upload root. */
+	/** Stores the file at the upload root and returns its relative path. */
 	public String store(MultipartFile file) {
+		return store(file, null);
+	}
+
+	/**
+	 * Stores the file under an optional category folder — "reports", "images" —
+	 * so different kinds of upload stay apart on disk. The returned path is
+	 * relative to the upload root and includes that folder.
+	 */
+	public String store(MultipartFile file, String category) {
 		if (file == null || file.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No file was uploaded.");
 		}
@@ -63,7 +72,8 @@ public class StorageService {
 		String leaf = Paths.get(original).getFileName().toString();
 		String safe = leaf.replaceAll("[^A-Za-z0-9._-]", "_");
 
-		String relative = LocalDate.now().format(FOLDER) + "/" + UUID.randomUUID() + NAME_SEPARATOR + safe;
+		String prefix = (category == null || category.isBlank()) ? "" : category.trim() + "/";
+		String relative = prefix + LocalDate.now().format(FOLDER) + "/" + UUID.randomUUID() + NAME_SEPARATOR + safe;
 		Path target = root.resolve(relative).normalize();
 		if (!target.startsWith(root)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid file name.");

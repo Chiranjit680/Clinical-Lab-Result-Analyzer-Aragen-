@@ -1,5 +1,7 @@
 package com.chiranjit.patientService.controller;
 
+import com.chiranjit.patientService.dto.AnalysisResponse;
+import com.chiranjit.patientService.dto.EmailReportRequest;
 import com.chiranjit.patientService.dto.ReportRequest;
 import com.chiranjit.patientService.dto.ReportResponse;
 import com.chiranjit.patientService.entity.ReportStatus;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -62,6 +65,29 @@ public class ReportController {
 				.contentType(MediaType.parseMediaType(stored.contentType()))
 				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + stored.filename() + "\"")
 				.body(stored.resource());
+	}
+
+	/**
+	 * Analyses a stored report and saves the result against it, replacing any
+	 * previous analysis. Runs for one to two minutes.
+	 */
+	@PostMapping("/{reportId}/analyze")
+	public AnalysisResponse analyzeReport(@PathVariable UUID reportId) {
+		return reportService.analyzeReport(reportId);
+	}
+
+	/** Emails the report, with its latest analysis rendered into the body. */
+	@PostMapping("/{reportId}/email")
+	public Map<String, String> emailReport(@PathVariable UUID reportId,
+			@Valid @RequestBody EmailReportRequest request) {
+		reportService.emailReport(reportId, request.to(), request.note());
+		return Map.of("status", "sent", "to", request.to());
+	}
+
+	/** The stored analysis for a report, or 404 when none has been run. */
+	@GetMapping("/{reportId}/analysis")
+	public AnalysisResponse getAnalysis(@PathVariable UUID reportId) {
+		return reportService.getAnalysis(reportId);
 	}
 
 	@GetMapping("/get/{reportId}")

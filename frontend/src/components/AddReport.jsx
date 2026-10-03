@@ -21,7 +21,7 @@ const ACCEPT_ATTRIBUTE = [
  * Stores a lab report against a patient. Filing only — nothing is analysed
  * here; that happens per report on the Patient reports page.
  */
-export default function AddReport() {
+export default function AddReport({ patientsVersion }) {
   const [patientId, setPatientId] = useState("");
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("NORMAL");
@@ -72,7 +72,7 @@ export default function AddReport() {
     <section className="panel">
       <h2 className="panel__title">Save a lab report</h2>
 
-      <PatientSelect value={patientId} onChange={setPatientId} />
+      <PatientSelect value={patientId} onChange={setPatientId} refreshToken={patientsVersion} />
 
       <label className="field">
         <span className="field__label">Report file</span>
