@@ -11,6 +11,7 @@ Built around one constraint: **a user should never see a bare "abnormal" label.*
 result carries the measured deviation, the reference range it was compared against, a clinical
 explanation, a concrete next step, and links to the sources behind it.
 
+Note: the demo video is of only version 1 and does not display the more recently added features.. please go through the read me to understand the project overall
 **▶ [Watch the demo](https://youtu.be/91TMwreZPQo)**
 
 ---
